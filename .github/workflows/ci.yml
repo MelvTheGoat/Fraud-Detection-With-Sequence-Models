@@ -1,0 +1,100 @@
+name: CI
+
+# Everything here runs on synthetic data generated at test time. No dataset is
+# downloaded, no credentials are needed, and no real data ever touches CI.
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Deterministic thread counts: the metric regression gate compares numbers
+  # across runs, and a varying thread count changes floating-point reduction
+  # order enough to move them.
+  OMP_NUM_THREADS: "2"
+  MKL_NUM_THREADS: "2"
+  PYTHONHASHSEED: "0"
+
+jobs:
+  quality:
+    name: lint, types, tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # CPU-only torch: the default wheel drags in the CUDA runtime for a
+          # runner that has no GPU, which triples install time for nothing.
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[serve,explain,dev]"
+
+      - name: Lint
+        run: ruff check src tests
+
+      - name: Type check
+        run: mypy src
+
+      - name: Temporal leakage tests
+        # Run first and on their own so a leak is unmistakable in the log rather
+        # than buried among a hundred other results. This is the suite that
+        # catches the bug which silently produces incredible metrics.
+        run: pytest tests/test_leakage.py -v
+
+      - name: Unit tests
+        run: pytest -m "not slow" -q
+
+      - name: Slow tests, serving parity and metric regression gate
+        run: pytest -m slow -q
+
+  smoke:
+    name: end-to-end smoke run
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[serve,explain,dev]"
+
+      - name: Simulate a small dataset
+        run: python -m src.simulate --out data/synthetic --customers 300 --days 90 --merchants 300
+
+      - name: Train the baseline
+        run: python -m src.baselines --data data/synthetic --results results --seeds 0
+
+      - name: Train one sequence model
+        run: |
+          python -m src.train --data data/synthetic --results results \
+            --models gru --strategies focal --seeds 0 --max-epochs 2
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-results
+          path: results/
+          retention-days: 7

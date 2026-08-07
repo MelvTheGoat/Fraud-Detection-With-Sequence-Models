@@ -1,0 +1,10 @@
+# Serving-only dependencies. Training, plotting and interpretability packages are
+# deliberately absent: the scoring container should not carry LightGBM, SHAP or
+# matplotlib, and a smaller image is a smaller attack surface.
+numpy>=1.26
+pandas>=2.1
+scikit-learn>=1.4
+fastapi>=0.110
+uvicorn[standard]>=0.27
+onnxruntime>=1.17
+pydantic>=2.6

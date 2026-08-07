@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Project data + artefacts (regenerate with `make all`)
+data/raw/*
+!data/raw/.gitkeep
+data/synthetic/
+data/processed/
+artifacts/
+results/*
+!results/.gitkeep
+audit/
+logs/
+*.onnx
+*.pt
+*.txt.gz
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/

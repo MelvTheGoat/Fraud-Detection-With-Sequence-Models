@@ -1,0 +1,29 @@
+services:
+  scoring:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fraud-scoring:0.1.0
+    ports:
+      - "8000:8000"
+    volumes:
+      # Artefacts are produced by `make experiment` on the host and mounted
+      # read-only: the container never writes to the model bundle.
+      - ./artifacts:/app/artifacts:ro
+      # The audit log must outlive the container, so it is a writable mount.
+      - ./audit:/app/audit
+    environment:
+      FRAUD_ARTIFACT_DIR: /app/artifacts
+      FRAUD_AUDIT_PATH: /app/audit/decisions.jsonl
+      OMP_NUM_THREADS: "1"
+    # Single-transaction scoring gets no benefit from thread parallelism and the
+    # tail latency is better without it. Scale out with replicas, not threads.
+    cpus: "1.0"
+    mem_limit: 1g
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys,json; sys.exit(0 if json.load(urllib.request.urlopen('http://127.0.0.1:8000/health'))['model_loaded'] else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
