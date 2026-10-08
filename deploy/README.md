@@ -130,6 +130,44 @@ commands and a localhost URL are often better than a hosted link, because they
 can change the config and retrain. The `docker run` above is the whole
 instruction.
 
+## The static route: no host at all
+
+`deploy/export_browser_demo.py` produces a payload for a page that needs no
+server. ONNX Runtime Web executes the same exported graph in the visitor's
+browser, and the fitted isotonic calibrator is replayed from its 42 breakpoints
+— linear interpolation between them is exactly what `sklearn` does, so this is a
+replay rather than a refit.
+
+```bash
+python -m deploy.export_browser_demo --out build/browser
+```
+
+Verified in Chromium against the Python service on identical inputs:
+
+| scenario | browser | server | difference |
+|---|---|---|---|
+| a fraud case, unaltered | 0.9917612 | 0.9917612 | 2.6e-08 |
+| legitimate + card-testing burst | 0.7304477 | 0.7304479 | 3.0e-07 |
+
+Float32 rounding on the same graph. Every scenario carries the server's score so
+the page can display both and let a visitor see the agreement instead of
+believing a claim about it.
+
+**The features are not ported, and will not be.** Building them needs a fitted
+scaler, six category encoders and out-of-time target-encoding maps. Reimplementing
+that in JavaScript would mean rewriting the one component whose entire purpose is
+that the online and offline paths agree bit for bit, and a parity bug there is
+invisible *and* flattering — the two properties that make a bug survive. So the
+real `FeatureBuilder` computes the input tensors here, for a cross product of 15
+cases and 10 variants, and the static page offers those 150 scenarios and nothing
+else.
+
+The trade is explicit: the container takes any transaction you POST and needs
+somewhere to run; the static page runs anywhere and takes a menu. Two costs worth
+knowing before you choose it — the ONNX Runtime WebAssembly binary is about
+11 MB on first load, and single-threaded wasm inference measured ~86 ms against
+~2 ms for ONNX Runtime on the server.
+
 ## Two honest differences from production
 
 **The bundle is baked into the image.** The root `Dockerfile` and
