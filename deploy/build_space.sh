@@ -59,13 +59,14 @@ rm -f "$STAGE/deploy/build_space.sh"
 find "$STAGE" -name '__pycache__' -type d -prune -exec rm -rf {} +
 find "$STAGE" -name '*.pyc' -delete
 
-# Spaces refuse plain files over 10 MB and want them in LFS. Flagging it here is
-# better than a rejected push with a message about a hook.
-large=$(find "$STAGE" -type f -size +10M -printf '%p (%sB)\n' 2>/dev/null || true)
-if [[ -n "$large" ]]; then
-  echo "Files over 10 MB -- track these in LFS before pushing:" >&2
-  echo "$large" >&2
-fi
+# Hugging Face rejects plain files over 10 MB and wants them in LFS. The whole
+# bundle is currently about 1.4 MB -- the largest single file is a 327 KB ONNX
+# graph -- so LFS is not configured unless something actually crosses the line.
+# An earlier version of this script declared *.onnx, *.pt and *.pkl as LFS
+# unconditionally, which is worse than useless: it sets the filter attribute
+# whether or not git-lfs is installed, and on a machine without it the files go
+# up as plain blobs that the server has been told to expect as pointers.
+LARGE=$(find "$STAGE" -type f -size +10M -printf '%P\n' 2>/dev/null || true)
 
 echo "Staged $(du -sh "$STAGE" | cut -f1) at $STAGE"
 echo
@@ -87,21 +88,28 @@ fi
 
 cd "$STAGE"
 git init -q -b main
-git lfs install --local 2>/dev/null || true
-cat > .gitattributes <<'EOF'
-*.onnx filter=lfs diff=lfs merge=lfs -text
-*.pt filter=lfs diff=lfs merge=lfs -text
-*.pkl filter=lfs diff=lfs merge=lfs -text
-EOF
+
+if [[ -n "$LARGE" ]]; then
+  if ! command -v git-lfs > /dev/null; then
+    echo "These files need Git LFS and git-lfs is not installed:" >&2
+    echo "$LARGE" >&2
+    exit 1
+  fi
+  git lfs install --local
+  while IFS= read -r path; do git lfs track "$path"; done <<< "$LARGE"
+fi
+
 git add -A
 git -c user.name="$(git -C "$ROOT" config user.name || echo deploy)" \
     -c user.email="$(git -C "$ROOT" config user.email || echo deploy@localhost)" \
     commit -q -m "Deploy fraud scoring demo"
-git remote add space "$REMOTE"
 
-# A Space repository already has a commit from its own creation, so the first
-# push from a freshly staged tree is a replacement, not a fast-forward.
-git push --force space main
+# A Space repository already carries a commit from its own creation, so the
+# first push from a freshly staged tree replaces it rather than fast-forwarding.
+# Pushing to the URL directly rather than `git remote add` keeps the token out
+# of .git/config, even though this staging directory is throwaway.
+echo "This REPLACES the current contents of the Space."
+git push --force "$REMOTE" main
 
 echo
 echo "Live shortly at https://huggingface.co/spaces/$SPACE"
