@@ -105,10 +105,11 @@ the container, under `--memory=1g --cpus=1`:
 | Resident memory, serving | **290 MiB** |
 | Scoring latency, approve path | p50 2.0 ms, p95 3.1 ms |
 | Scoring latency, blocked path | p50 8.9 ms, p95 11.7 ms — it runs the explanation |
-| Startup to `model_loaded: true` | ~35 s, almost all of it importing torch |
+| Startup to `model_loaded: true` | 4 s once the image is in page cache; ~35 s on the first start after a build or a registry pull |
 
 290 MiB is the number that decides whether a plan fits, and it fits a 512 MB
-tier. The 2 GB image matters for build time and for registry pulls, not for
+tier: the staged Space image was run under `--memory=512m` and served every
+endpoint at 263 MiB, so this is verified rather than extrapolated. The 2 GB image matters for build time and for registry pulls, not for
 whether the thing runs. If a host gives you 512 MB, you have headroom; if it
 gives you 256 MB, you do not.
 
