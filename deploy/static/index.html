@@ -15,13 +15,14 @@
     --approve: #1a7f4b;
     --review: #9a6400;
     --block: #b42318;
+    --syn: #7a4fc0;
     --code-bg: #f1f3f6;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --ink: #e8eaee; --muted: #9aa3b2; --line: #2b313b; --bg: #13161b;
       --card: #1a1e25; --accent: #7aa0f5; --approve: #4ec98a; --review: #e0a93c;
-      --block: #f2726a; --code-bg: #101318;
+      --block: #f2726a; --syn: #b394ea; --code-bg: #101318;
     }
   }
   * { box-sizing: border-box; }
@@ -33,9 +34,10 @@
   .wrap { max-width: 760px; margin: 0 auto; }
   header { padding: 28px 0 8px; }
   h1 { font-size: 22px; line-height: 1.25; margin: 0 0 6px; }
-  h2 { font-size: 15px; margin: 26px 0 10px; letter-spacing: .02em; text-transform: uppercase; color: var(--muted); }
+  h2 { font-size: 13px; margin: 26px 0 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  h3 { font-size: 14px; margin: 0 0 8px; }
   p { margin: 0 0 12px; }
-  .sub { color: var(--muted); font-size: 14px; }
+  .sub { color: var(--muted); font-size: 13.5px; }
   a { color: var(--accent); }
   .card {
     background: var(--card); border: 1px solid var(--line); border-radius: 10px;
@@ -56,6 +58,7 @@
   }
   button:disabled { opacity: .55; cursor: default; }
   button.ghost { background: transparent; color: var(--accent); border-color: var(--line); font-weight: 500; padding: 9px; }
+  button.ghost.on { background: var(--syn); color: #fff; border-color: transparent; }
   .row { display: flex; gap: 10px; flex-wrap: wrap; }
   .row > * { flex: 1 1 150px; }
   .verdict { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
@@ -67,7 +70,7 @@
   .pill.approve { background: var(--approve); }
   .pill.review  { background: var(--review); }
   .pill.block   { background: var(--block); }
-  .bar { height: 8px; border-radius: 999px; background: var(--code-bg); margin: 14px 0 6px; overflow: hidden; position: relative; }
+  .bar { height: 8px; border-radius: 999px; background: var(--code-bg); margin: 14px 0 6px; overflow: hidden; }
   .bar > span { display: block; height: 100%; background: var(--accent); }
   .ticks { position: relative; height: 16px; font-size: 10.5px; color: var(--muted); }
   .ticks i { position: absolute; transform: translateX(-50%); font-style: normal; white-space: nowrap; }
@@ -75,12 +78,14 @@
   th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); }
   th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.syn td { color: var(--syn); }
   .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
-  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px; margin: 0; }
   .kv dt { color: var(--muted); }
   .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
   .truth { border-left: 3px solid var(--accent); padding-left: 12px; font-size: 13.5px; }
+  .synnote { border-left: 3px solid var(--syn); padding-left: 12px; font-size: 13px; color: var(--muted); margin: 12px 0 0; }
   .err { color: var(--block); font-size: 13.5px; }
   .caveat { font-size: 12.5px; color: var(--muted); font-style: italic; }
   footer { color: var(--muted); font-size: 12.5px; padding-top: 10px; }
@@ -109,15 +114,29 @@
   <dl class="kv" id="caseStats"></dl>
 </div>
 
-<h2>2 &middot; Edit the transaction being authorised</h2>
+<h2>2 &middot; Change what the model sees</h2>
 <div class="card">
-  <div class="grid" id="form"></div>
-  <div class="row" style="margin-top:14px">
-    <button class="ghost" id="reset" type="button">Reset to the real transaction</button>
-    <button class="ghost" id="preset-ato" type="button">Make it look like takeover</button>
-    <button class="ghost" id="preset-test" type="button">Make it look like card testing</button>
+  <h3>Inject a fraud episode</h3>
+  <p class="sub">Both mechanisms this model was trained against are <em>bursts</em> of
+  three to fifteen transactions, not single anomalies. The features it reads &mdash;
+  velocity in the last hour, merchant novelty, amount against this customer's own
+  median &mdash; are properties of a sequence. So these buttons graft a synthetic
+  burst onto the customer's real history. Editing one transaction barely moves the
+  score, and that is the model being right, not broken.</p>
+  <div class="row">
+    <button class="ghost" id="ep-card_testing" type="button">Card testing burst</button>
+    <button class="ghost" id="ep-account_takeover" type="button">Account takeover</button>
+    <button class="ghost" id="ep-none" type="button">No episode</button>
   </div>
-  <div style="margin-top:12px"><button id="score" type="button">Score this transaction</button></div>
+  <p class="synnote" id="epNote" hidden></p>
+
+  <h3 style="margin-top:20px">Or edit the transaction being authorised</h3>
+  <div class="grid" id="form"></div>
+  <div class="row" style="margin-top:12px">
+    <button class="ghost" id="reset" type="button">Reset the transaction</button>
+  </div>
+
+  <div style="margin-top:14px"><button id="score" type="button">Score this transaction</button></div>
   <p class="err" id="error" hidden></p>
 </div>
 
@@ -127,15 +146,15 @@
     <div class="verdict">
       <span class="prob" id="prob">&mdash;</span>
       <span class="pill" id="decision">&mdash;</span>
-      <span class="sub" id="rawNote"></span>
     </div>
+    <p class="sub" id="rawNote" style="margin:10px 0 0"></p>
     <div class="bar"><span id="barFill"></span></div>
     <div class="ticks" id="ticks"></div>
     <dl class="kv" id="meta" style="margin-top:14px"></dl>
   </div>
 
   <div class="card" id="contribCard" hidden>
-    <h2 style="margin-top:0">Prior transactions the model read from</h2>
+    <h3>Prior transactions the model read from</h3>
     <div class="scroll"><table id="contrib"></table></div>
     <p class="caveat" id="caveat"></p>
   </div>
@@ -146,8 +165,11 @@
   </div>
 </div>
 
-<h2>The customer's recent history</h2>
-<div class="card scroll"><table id="history"></table></div>
+<h2>What the model sees</h2>
+<div class="card">
+  <div class="scroll"><table id="history"></table></div>
+  <p class="sub" id="histNote" style="margin:10px 0 0"></p>
+</div>
 
 <footer>
   <p>Synthetic data throughout. <a href="/docs">API docs</a> &middot;
@@ -172,11 +194,45 @@ const FIELDS = [
   { key: "entry_mode",  label: "Entry mode",  type: "vocab" },
 ];
 
-let DATA = null;
+let DATA = null;       // the case file
+let INFO = null;       // /model-info
 let activeCase = null;
-let candidate = null;
+let candidate = null;  // the transaction being scored
+let episode = null;    // injected burst, or null
 
 const $ = (id) => document.getElementById(id);
+
+/* The history actually sent: the customer's real transactions plus whatever
+   burst is grafted on. One function so the table, the request and the
+   contributor lookup can never disagree about what the window contained. */
+function effectiveHistory() {
+  return episode ? activeCase.history.concat(episode.injected) : activeCase.history;
+}
+
+function fmtMoney(x) {
+  return "£" + Number(x).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/* The simulator writes nanosecond precision, and Safari rejects an ISO string
+   with more than three fractional digits where V8 tolerates it. Slicing the
+   string sidesteps a date parser the demo does not need. */
+function fmtTime(iso) {
+  return String(iso).slice(0, 16).replace("T", " ");
+}
+
+/* Isotonic calibration maps the bottom of its range to exactly zero, so a
+   legitimate transaction renders as "0.00%". Reporting that as a flat zero
+   would be the one genuinely overconfident number on the page. */
+function fmtProb(p) {
+  if (p >= 0.0005) return (100 * p).toFixed(2) + "%";
+  if (p > 0) return "<0.05%";
+  return "~0%";
+}
+
+function fmtSci(x) {
+  if (x >= 0.001) return (100 * x).toFixed(3) + "%";
+  return (100 * x).toExponential(1) + "%";
+}
 
 /* Values the UI invents (a device that does not exist, a country the customer
    has never used) are the interesting ones, so every dropdown allows a value
@@ -207,7 +263,7 @@ function buildForm() {
       el = document.createElement("select");
       const known = activeCase.customer_devices.slice();
       if (!known.includes(String(candidate.device_id))) known.unshift(String(candidate.device_id));
-      known.push("D999999_9");
+      if (!known.includes("D999999_9")) known.push("D999999_9");
       for (const v of known) {
         const o = document.createElement("option");
         o.value = v;
@@ -225,53 +281,45 @@ function buildForm() {
       el.value = String(candidate[f.key]);
     }
     el.id = "f-" + f.key;
-    el.addEventListener("change", () => {
-      candidate[f.key] = f.type === "number" ? Number(el.value) : el.value;
-    });
-    el.addEventListener("input", () => {
-      candidate[f.key] = f.type === "number" ? Number(el.value) : el.value;
-    });
+    const sync = () => { candidate[f.key] = f.type === "number" ? Number(el.value) : el.value; };
+    el.addEventListener("change", sync);
+    el.addEventListener("input", sync);
     wrap.appendChild(el);
     host.appendChild(wrap);
   }
 }
 
-function fmtMoney(x) {
-  return "£" + Number(x).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-/* The simulator writes nanosecond precision, and Safari rejects an ISO string
-   with more than three fractional digits where V8 tolerates it. Slicing the
-   string sidesteps a date parser the demo does not need. */
-function fmtTime(iso) {
-  return String(iso).slice(0, 16).replace("T", " ");
-}
-
 function renderHistory() {
-  const rows = activeCase.history.slice(-24).reverse();
-  const t = $("history");
-  t.innerHTML =
+  const all = effectiveHistory();
+  const injected = episode ? new Set(episode.injected.map((r) => r.txn_id)) : new Set();
+  const rows = all.slice(-22).reverse();
+  $("history").innerHTML =
     "<thead><tr><th>When</th><th class='num'>Amount</th><th>Merchant</th>" +
     "<th>Device</th><th>Country</th><th>Channel</th></tr></thead><tbody>" +
     rows.map((r) =>
-      "<tr><td class='mono'>" + fmtTime(r.timestamp) + "</td>" +
+      "<tr" + (injected.has(r.txn_id) ? " class='syn'" : "") + ">" +
+      "<td class='mono'>" + fmtTime(r.timestamp) + "</td>" +
       "<td class='num'>" + fmtMoney(r.amount) + "</td>" +
       "<td class='mono'>" + r.merchant_id + "</td>" +
       "<td class='mono'>" + r.device_id + "</td>" +
       "<td>" + r.country + "</td><td>" + r.channel + "</td></tr>"
     ).join("") +
     "</tbody>";
-  const hidden = activeCase.history.length - rows.length;
-  if (hidden > 0) {
-    t.insertAdjacentHTML("afterend",
-      "<p class='sub' style='margin:10px 0 0'>Showing the most recent " + rows.length +
-      " of " + activeCase.history.length + " prior transactions. All " +
-      activeCase.history.length + " are sent with every scoring request.</p>");
+
+  let note = "Showing the most recent " + rows.length + " of " + all.length +
+             " prior transactions. All " + all.length + " are sent with every request, " +
+             "because every position in the 32-step window needs its own 31 " +
+             "transactions of history behind it.";
+  if (episode) {
+    note += " The " + episode.injected.length + " rows in purple are synthetic — " +
+            "they never happened.";
   }
+  $("histNote").innerHTML = note;
 }
 
 function selectCase(id) {
   activeCase = DATA.cases.find((c) => c.id === id);
+  episode = null;
   candidate = JSON.parse(JSON.stringify(activeCase.candidate));
   $("caseNote").textContent = activeCase.note;
   $("caseStats").innerHTML =
@@ -280,34 +328,53 @@ function selectCase(id) {
     "<dt>Their median amount</dt><dd>" + fmtMoney(activeCase.customer_median_amount) + "</dd>" +
     "<dt>Devices they use</dt><dd class='mono'>" + activeCase.customer_devices.join(", ") + "</dd>" +
     "<dt>Countries</dt><dd>" + activeCase.customer_countries.join(", ") + "</dd>";
+  clearEpisodeButtons();
+  $("epNote").hidden = true;
   buildForm();
   renderHistory();
   $("result").hidden = true;
   $("truth").hidden = true;
 }
 
-/* The presets are not model inputs, they are hypotheses. Each one applies the
-   signature of a mechanism the simulator generates, so you can check whether
-   the model responds to the pattern rather than to one field. */
-function presetTakeover() {
-  candidate.device_id = "D999999_9";
-  candidate.amount = Math.round(activeCase.customer_median_amount * 9 * 100) / 100;
-  candidate.channel = "online";
-  candidate.entry_mode = "ecom";
-  const foreign = (DATA.vocab.country || []).find((c) => !activeCase.customer_countries.includes(c));
-  if (foreign) candidate.country = foreign;
-  buildForm();
+function clearEpisodeButtons() {
+  for (const m of ["card_testing", "account_takeover"]) $("ep-" + m).classList.remove("on");
 }
 
-function presetCardTesting() {
-  candidate.amount = 1.21;
-  candidate.channel = "online";
-  candidate.entry_mode = "ecom";
-  const unknownMerchant = (DATA.vocab.merchant_id || []).find(
-    (m) => !activeCase.history.some((h) => h.merchant_id === m)
-  );
-  if (unknownMerchant) candidate.merchant_id = unknownMerchant;
-  buildForm();
+async function applyEpisode(mechanism) {
+  if (mechanism === null) {
+    episode = null;
+    candidate = JSON.parse(JSON.stringify(activeCase.candidate));
+    clearEpisodeButtons();
+    $("epNote").hidden = true;
+    buildForm();
+    renderHistory();
+    return;
+  }
+  const btn = $("ep-" + mechanism);
+  const original = btn.textContent;
+  btn.disabled = true;
+  try {
+    const res = await fetch("/demo/episode", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ case_id: activeCase.id, mechanism: mechanism }),
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    episode = await res.json();
+    candidate = JSON.parse(JSON.stringify(episode.candidate));
+    clearEpisodeButtons();
+    btn.classList.add("on");
+    $("epNote").textContent = episode.explanation;
+    $("epNote").hidden = false;
+    buildForm();
+    renderHistory();
+  } catch (e) {
+    $("error").textContent = "Could not build the episode: " + e.message;
+    $("error").hidden = false;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
 }
 
 async function score() {
@@ -316,17 +383,15 @@ async function score() {
   btn.innerHTML = "<span class='spin'></span> Scoring…";
   $("error").hidden = true;
 
-  const body = {
-    customer_id: activeCase.customer_id,
-    transaction: candidate,
-    history: activeCase.history,
-  };
-
   try {
     const res = await fetch("/score", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        customer_id: activeCase.customer_id,
+        transaction: candidate,
+        history: effectiveHistory(),
+      }),
     });
     const payload = await res.json();
     if (!res.ok) throw new Error(payload.detail || ("HTTP " + res.status));
@@ -342,57 +407,127 @@ async function score() {
 
 function render(r) {
   $("result").hidden = false;
-  $("prob").textContent = (100 * r.fraud_probability).toFixed(2) + "%";
+  $("prob").textContent = fmtProb(r.fraud_probability);
   const pill = $("decision");
   pill.textContent = r.decision;
   pill.className = "pill " + r.decision;
-  $("rawNote").textContent =
-    "raw " + (100 * r.raw_score).toFixed(2) + "% before calibration";
+
+  let raw = "Raw model output " + fmtSci(r.raw_score) + ", mapped through " +
+            (INFO ? INFO.calibration : "the deployed") + " calibration.";
+  if (r.fraud_probability === 0) {
+    raw += " Isotonic regression pins the bottom of its range to exactly zero, " +
+           "which is why this reads as 0% rather than something very small — " +
+           "the raw score is the honest number here.";
+  }
+  $("rawNote").textContent = raw;
 
   /* A linear bar over [0,1] puts every realistic score in the first pixel, so
      the scale is the decision region: thresholds sit where you can see them. */
-  const top = Math.max(r.fraud_probability, r.threshold) * 1.35 + 0.01;
+  const review = INFO ? INFO.review_threshold : 0;
+  const top = Math.max(r.fraud_probability, r.threshold) * 1.35 + 0.005;
   $("barFill").style.width = Math.min(100, (100 * r.fraud_probability) / top) + "%";
-  const review = window.__review ?? 0;
   $("ticks").innerHTML =
-    "<i style='left:" + Math.min(98, (100 * review) / top) + "%'>review " +
+    "<i style='left:" + Math.min(97, (100 * review) / top) + "%'>review " +
       (100 * review).toFixed(2) + "%</i>" +
-    "<i style='left:" + Math.min(98, (100 * r.threshold) / top) + "%'>block " +
+    "<i style='left:" + Math.min(97, (100 * r.threshold) / top) + "%'>block " +
       (100 * r.threshold).toFixed(2) + "%</i>";
 
   $("meta").innerHTML =
-    "<dt>Model</dt><dd>" + r.model_family + " v" + r.model_version + "</dd>" +
+    "<dt>Model</dt><dd>" + r.model_family + " v" + r.model_version +
+      (INFO ? " (" + INFO.model_name + ")" : "") + "</dd>" +
     "<dt>Runtime</dt><dd>" + r.runtime + "</dd>" +
     "<dt>Server latency</dt><dd>" + r.latency_ms.toFixed(2) + " ms</dd>" +
     "<dt>History used</dt><dd>" + r.history_used + " prior transactions</dd>";
 
   const card = $("contribCard");
   if (r.top_contributors && r.top_contributors.length) {
+    const injected = episode ? new Set(episode.injected.map((x) => x.txn_id)) : new Set();
     card.hidden = false;
     $("contrib").innerHTML =
       "<thead><tr><th>Offset</th><th>When</th><th class='num'>Amount</th>" +
-      "<th>Merchant</th><th>Device</th><th class='num'>Weight</th></tr></thead><tbody>" +
+      "<th>Merchant</th><th class='num'>Weight</th></tr></thead><tbody>" +
       r.top_contributors.map((c) =>
-        "<tr><td class='mono'>" + (c.offset === 0 ? "this one" : c.offset) + "</td>" +
+        "<tr" + (injected.has(c.txn_id) ? " class='syn'" : "") + ">" +
+        "<td class='mono'>" + (c.offset === 0 ? "this one" : c.offset) + "</td>" +
         "<td class='mono'>" + fmtTime(c.timestamp) + "</td>" +
         "<td class='num'>" + fmtMoney(c.amount) + "</td>" +
         "<td class='mono'>" + c.merchant_id + "</td>" +
-        "<td class='mono'>" + c.device_id + "</td>" +
         "<td class='num'>" + (c.attention == null ? "—" : c.attention.toFixed(4)) + "</td></tr>"
       ).join("") + "</tbody>";
-    $("caveat").textContent = r.attention_caveat || "";
+    $("caveat").textContent = r.attention_caveat ||
+      "Contributors here are gradient x input over window positions, not attention: " +
+      "this architecture has none. They answer how much the logit moves with each " +
+      "position's inputs, which is a weaker claim than an explanation.";
   } else {
     card.hidden = true;
+    $("caveat").textContent = "";
   }
 
-  $("revealBtn").hidden = false;
   $("truth").hidden = true;
-  $("truth").innerHTML =
-    "<p><strong>" + (activeCase.truth.is_fraud ? "This transaction was fraud" : "This transaction was legitimate") +
-    "</strong>" + (activeCase.truth.fraud_type !== "none" ? " — " + activeCase.truth.fraud_type.replace(/_/g, " ") : "") + ".</p>" +
-    "<p class='sub'>That is the label for the <em>original</em> transaction. If you edited the form, " +
-    "you are scoring something that never happened and there is no ground truth for it &mdash; " +
-    "which is the honest way to play with a model, as long as you remember it.</p>";
+  $("truth").innerHTML = episode
+    ? "<p><strong>There is no ground truth for this one.</strong></p>" +
+      "<p class='sub'>You injected a synthetic burst, so you are scoring something " +
+      "that never happened. The original transaction for this customer was " +
+      (activeCase.truth.is_fraud ? "fraud" : "legitimate") + ".</p>"
+    : "<p><strong>" + (activeCase.truth.is_fraud
+        ? "This transaction was fraud" : "This transaction was legitimate") + "</strong>" +
+      (activeCase.truth.fraud_type !== "none"
+        ? " — " + activeCase.truth.fraud_type.replace(/_/g, " ") : "") + ".</p>" +
+      (candidateEdited()
+        ? "<p class='sub'>You edited the form, so that label belongs to the original " +
+          "transaction, not the one you just scored.</p>"
+        : "");
+}
+
+function candidateEdited() {
+  return JSON.stringify(candidate) !== JSON.stringify(activeCase.candidate);
+}
+
+function renderNotice(notice, data) {
+  const m = data.measured || {};
+  const d = m.deployed, b = m.baseline;
+  let perf = "";
+  if (d && b && d.pr_auc != null && b.pr_auc != null) {
+    const seeds = d.n_seeds || 1;
+    const err = d.pr_auc_std != null ? " ± " + d.pr_auc_std.toFixed(4) : "";
+    perf =
+      "<p>The bundle being served scores <strong>" + d.pr_auc.toFixed(4) + err +
+      "</strong> test PR-AUC against <strong>" + b.pr_auc.toFixed(4) +
+      "</strong> for LightGBM on the same features" +
+      (seeds > 1 ? ", over " + seeds + " seeds." :
+        ". One seed, so there is no error bar — the repository's published " +
+        "figures come from a three-seed run and carry one.") + "</p>";
+    if (d.cost_per_txn != null && b.cost_per_txn != null && m.trivial_policies) {
+      const saved = 100 * (1 - d.cost_per_txn / b.cost_per_txn);
+      perf += "<p>Cost per transaction " + d.cost_per_txn.toFixed(4) + " against " +
+        b.cost_per_txn.toFixed(4) + " for the baseline (" + saved.toFixed(1) +
+        "% lower), where approving everything costs " +
+        m.trivial_policies.block_nothing.toFixed(4) + " and blocking everything costs " +
+        m.trivial_policies.block_everything.toFixed(2) + ". Recall " +
+        (100 * d.recall).toFixed(1) + "% at a " + (100 * d.alert_rate).toFixed(2) +
+        "% alert rate.</p>";
+    }
+  }
+  if (m.latency) {
+    perf += "<p>Scoring latency p50 " + m.latency.p50_ms.toFixed(2) + " ms, p99 " +
+      m.latency.p99_ms.toFixed(2) + " ms against a 50 ms budget, ONNX Runtime " +
+      m.latency.onnx_speedup_p50.toFixed(1) + "× faster than eager PyTorch at p50.</p>";
+  }
+
+  $("notice").innerHTML =
+    "<p><strong>What this is.</strong> " + notice.what_this_is + "</p>" +
+    "<p><strong>What it is not.</strong> " + notice.what_this_is_not + "</p>" +
+    perf +
+    (INFO ? "<p class='sub'>Deployed arm <code>" + INFO.model_name + "</code>, " +
+      INFO.calibration + " calibration, " + INFO.n_parameters.toLocaleString() +
+      " parameters over a " + INFO.window_length + "-position window. Block at " +
+      (100 * INFO.decision_threshold).toFixed(2) + "%, review at " +
+      (100 * INFO.review_threshold).toFixed(2) + "%, both chosen on validation " +
+      "against an explicit cost model rather than picked for a round number.</p>" : "") +
+    "<p class='sub'>Fraud is " + (100 * data.dataset.fraud_rate).toFixed(2) +
+    "% of this dataset. The case list oversamples it on purpose, so there is " +
+    "something to find.</p>";
+  if (notice.source) $("src").href = notice.source;
 }
 
 async function boot() {
@@ -404,20 +539,8 @@ async function boot() {
     ]);
 
     DATA = data;
-    window.__review = info ? info.review_threshold : 0;
-
-    $("notice").innerHTML =
-      "<p><strong>What this is.</strong> " + notice.what_this_is + "</p>" +
-      "<p><strong>What it is not.</strong> " + notice.what_this_is_not + "</p>" +
-      "<p>Test PR-AUC " + notice.headline.test_pr_auc + ". p99 latency " +
-      notice.headline.p99_latency_ms + " ms against a " + notice.headline.latency_budget_ms +
-      " ms budget." + (info ? " Deployed arm: <code>" + info.model_name + "</code>, " +
-      info.calibration + " calibration, " + info.n_parameters.toLocaleString() +
-      " parameters over a " + info.window_length + "-position window." : "") + "</p>" +
-      "<p class='sub'>Fraud is " + (100 * data.dataset.fraud_rate).toFixed(2) +
-      "% of this dataset. The case list below oversamples it on purpose, so there is " +
-      "something to find.</p>";
-    if (notice.source) $("src").href = notice.source;
+    INFO = info;
+    renderNotice(notice, data);
 
     const sel = $("case");
     sel.innerHTML = data.cases.map((c) => {
@@ -439,11 +562,12 @@ async function boot() {
 
 $("score").addEventListener("click", score);
 $("reset").addEventListener("click", () => {
-  candidate = JSON.parse(JSON.stringify(activeCase.candidate));
+  candidate = JSON.parse(JSON.stringify(episode ? episode.candidate : activeCase.candidate));
   buildForm();
 });
-$("preset-ato").addEventListener("click", presetTakeover);
-$("preset-test").addEventListener("click", presetCardTesting);
+$("ep-card_testing").addEventListener("click", () => applyEpisode("card_testing"));
+$("ep-account_takeover").addEventListener("click", () => applyEpisode("account_takeover"));
+$("ep-none").addEventListener("click", () => applyEpisode(null));
 $("revealBtn").addEventListener("click", () => {
   $("truth").hidden = !$("truth").hidden;
 });

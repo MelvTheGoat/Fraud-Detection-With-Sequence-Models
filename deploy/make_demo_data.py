@@ -28,6 +28,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from deploy.episodes import ATO_MCCS, CARD_TESTING_MCCS
 from src.config import SYNTHETIC_DIR, SequenceConfig, SplitConfig
 from src.data.features import DEFAULT_LOOKBACK
 from src.data.schema import FraudType, TransactionSchema
@@ -139,7 +140,71 @@ def _build_case(
     }
 
 
-def build(data_dir: Path, seed: int = 11) -> dict[str, Any]:
+def measured(results_dir: Path, artifact_dir: Path) -> dict[str, Any]:
+    """Collect the numbers for the bundle actually being served.
+
+    The page used to quote the README's three-seed figures. That is dishonest
+    whenever the bundle came from a shorter run: a single-seed `--models gru`
+    experiment produces a perfectly serviceable demo and an error bar of NaN, and
+    a page claiming +/- 0.0137 over it is claiming a measurement nobody made.
+    So the numbers travel with the bundle, carry their own ``n_seeds``, and the
+    page says "single seed, no error bar" when that is what happened.
+
+    Args:
+        results_dir: Directory written by :mod:`src.experiment`.
+        artifact_dir: Directory holding ``deployment.json``.
+
+    Returns:
+        Whatever could be read, possibly ``{}``. A missing results directory is
+        not an error -- the bundle still serves.
+    """
+    out: dict[str, Any] = {}
+    descriptor = artifact_dir / "deployment.json"
+    if descriptor.exists():
+        out["deployment"] = json.loads(descriptor.read_text())
+
+    summary_path = results_dir / "summary.json"
+    if not summary_path.exists():
+        return out
+    summary = json.loads(summary_path.read_text())
+
+    name = out.get("deployment", {}).get("model_name")
+    headline = {row["model"]: row for row in summary.get("headline", [])}
+    policy = {row["model"]: row for row in summary.get("policy", {}).get("table", [])}
+
+    def _clean(value: Any) -> Any:
+        """NaN is not JSON, and a std of NaN means one seed."""
+        return None if isinstance(value, float) and value != value else value
+
+    for key, model in (("deployed", name), ("baseline", "lightgbm")):
+        if model in headline:
+            row = headline[model]
+            out[key] = {
+                "model": model,
+                "pr_auc": _clean(row.get("pr_auc_mean")),
+                "pr_auc_std": _clean(row.get("pr_auc_std")),
+                "n_seeds": row.get("n_seeds"),
+            }
+        if model in policy:
+            out.setdefault(key, {"model": model})
+            out[key]["cost_per_txn"] = _clean(policy[model].get("test_cost_per_txn_mean"))
+            out[key]["cost_per_txn_std"] = _clean(policy[model].get("test_cost_per_txn_std"))
+            out[key]["alert_rate"] = _clean(policy[model].get("test_alert_rate_mean"))
+            out[key]["recall"] = _clean(policy[model].get("test_recall_mean"))
+
+    out["trivial_policies"] = summary.get("policy", {}).get("trivial_policies")
+    latency = summary.get("deployment", {}).get("latency")
+    if latency:
+        out["latency"] = latency
+    return out
+
+
+def build(
+    data_dir: Path,
+    seed: int = 11,
+    results_dir: Path = Path("results"),
+    artifact_dir: Path = Path("artifacts"),
+) -> dict[str, Any]:
     """Sample demo cases from the test period of the simulated dataset.
 
     Cases are drawn from test rows only. A case taken from the training period
@@ -149,6 +214,9 @@ def build(data_dir: Path, seed: int = 11) -> dict[str, Any]:
     Args:
         data_dir: Directory containing ``transactions.parquet``.
         seed: RNG seed for case selection.
+        results_dir: Directory written by :mod:`src.experiment`, for the measured
+            numbers the page quotes. Absent is fine.
+        artifact_dir: Directory holding ``deployment.json``.
 
     Returns:
         The case file payload.
@@ -204,7 +272,32 @@ def build(data_dir: Path, seed: int = 11) -> dict[str, Any]:
     }
     vocab["merchant_id"] = sorted({str(v) for v in df[S.MERCHANT_ID].unique()})[:200]
 
+    # Merchant pools for the injected-episode presets. The presets have to place
+    # transactions at merchants whose MCC matches the mechanism, so the pool is
+    # merchant/MCC *pairs* rather than two independent lists -- picking an MCC and
+    # a merchant separately would produce a grocer with a gambling category code,
+    # which the target encoding has never seen together.
+    pairs = (
+        df[[S.MERCHANT_ID, S.MCC]]
+        .drop_duplicates(subset=[S.MERCHANT_ID])
+        .astype(str)
+    )
+    attack_pools = {
+        name: [
+            {"merchant_id": r[S.MERCHANT_ID], "mcc": r[S.MCC]}
+            for r in pairs[pairs[S.MCC].isin(mccs)].head(150).to_dict("records")
+        ]
+        for name, mccs in (
+            ("card_testing", CARD_TESTING_MCCS),
+            ("account_takeover", ATO_MCCS),
+        )
+    }
+    for name, pool in attack_pools.items():
+        LOGGER.info("%s merchant pool: %d merchants", name, len(pool))
+
     return {
+        "measured": measured(results_dir, artifact_dir),
+        "attack_pools": attack_pools,
         "dataset": {
             "n_transactions": int(len(df)),
             "fraud_rate": round(float(df[S.IS_FRAUD].mean()), 6),
@@ -223,10 +316,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--data", type=Path, default=SYNTHETIC_DIR)
     parser.add_argument("--out", type=Path, default=Path("deploy/demo_data.json"))
     parser.add_argument("--seed", type=int, default=11)
+    parser.add_argument("--results", type=Path, default=Path("results"))
+    parser.add_argument("--artifacts", type=Path, default=Path("artifacts"))
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    payload = build(args.data, seed=args.seed)
+    payload = build(
+        args.data, seed=args.seed, results_dir=args.results, artifact_dir=args.artifacts
+    )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(payload, indent=1))
     LOGGER.info(

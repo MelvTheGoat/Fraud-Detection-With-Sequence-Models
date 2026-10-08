@@ -36,7 +36,9 @@ from typing import Any
 
 from fastapi import HTTPException
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
 
+from deploy import episodes
 from src.api.app import app, state
 
 LOGGER = logging.getLogger(__name__)
@@ -45,6 +47,11 @@ HERE = Path(__file__).resolve().parent
 DEMO_DATA = Path(os.environ.get("FRAUD_DEMO_DATA", str(HERE / "demo_data.json")))
 INDEX = HERE / "static" / "index.html"
 
+# No numbers here on purpose. Every figure the page shows comes from the
+# ``measured`` block of the case file, which is built from the same run that
+# produced the bundle being served. Hardcoding the README's three-seed figures
+# would state an error bar nobody measured whenever the bundle came from a
+# shorter run, which is the exact failure this project spends a chapter on.
 NOTICE: dict[str, Any] = {
     "what_this_is": (
         "A fraud scoring model served the way it would be served in production: "
@@ -56,12 +63,6 @@ NOTICE: dict[str, Any] = {
         "real card transactions. The numbers are honest about that simulator and "
         "say nothing about performance on a real portfolio."
     ),
-    "headline": {
-        "test_pr_auc": "0.8703 +/- 0.0137 (GRU) against 0.8261 +/- 0.0010 (LightGBM)",
-        "cost_reduction_vs_baseline": "0.0799 +/- 0.0122 against 0.0860 +/- 0.0035",
-        "p99_latency_ms": 7.15,
-        "latency_budget_ms": 50.0,
-    },
     "source": "https://github.com/MelvTheGoat/Fraud-Detection-With-Sequence-Models",
 }
 
@@ -116,3 +117,34 @@ def demo_data() -> JSONResponse:
             status_code=503,
             detail=f"demo case file not found at {DEMO_DATA}; run deploy.make_demo_data",
         ) from None
+
+
+class EpisodeRequest(BaseModel):
+    """Which synthetic burst to graft onto which case."""
+
+    case_id: str = Field(description="Id of a case from /demo/data.")
+    mechanism: str = Field(description="card_testing or account_takeover.")
+    seed: int = Field(default=0, description="So a given case and preset repeat.")
+
+
+@app.post("/demo/episode", include_in_schema=False)
+def demo_episode(request: EpisodeRequest) -> JSONResponse:
+    """Build a synthetic fraud episode on top of a case's real history.
+
+    The episode is built here rather than in the browser so that the shape of
+    each mechanism lives next to the simulator semantics it mirrors, and so the
+    smoke test can assert the model responds to it.
+    """
+    payload = _demo_payload()
+    case = next((c for c in payload["cases"] if c["id"] == request.case_id), None)
+    if case is None:
+        raise HTTPException(status_code=404, detail=f"no case {request.case_id!r}")
+    if request.mechanism not in episodes.BUILDERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"mechanism must be one of {sorted(episodes.BUILDERS)}",
+        )
+    episode = episodes.build(
+        request.mechanism, case, payload["attack_pools"], seed=request.seed
+    )
+    return JSONResponse(episode.to_payload())

@@ -108,7 +108,13 @@ def main() -> int:
             f"fraud scores higher than legitimate on average ({mean_fraud:.4f} > {mean_legit:.4f})",
         )
 
-        # The interactive promise: editing the transaction has to move the score.
+        # The interactive promise of the page. This is asserted on episodes, not
+        # on single-field edits, because the first version of this test asserted
+        # the latter and failed -- correctly. Both mechanisms in the simulator are
+        # bursts of 3-15 transactions, and the features the model reads are
+        # properties of a sequence, so a single edited transaction on a clean
+        # history should move the score barely at all. The test now checks the
+        # thing the model is supposed to detect.
         legitimate = next(c for c in data["cases"] if not c["truth"]["is_fraud"])
         base = client.post(
             "/score",
@@ -117,23 +123,53 @@ def main() -> int:
                 "transaction": legitimate["candidate"],
                 "history": legitimate["history"],
             },
-        ).json()["fraud_probability"]
+        ).json()
 
-        tampered = dict(legitimate["candidate"])
-        tampered["device_id"] = "D999999_9"
-        tampered["amount"] = round(legitimate["customer_median_amount"] * 9, 2)
-        tampered["channel"] = "online"
-        tampered["entry_mode"] = "ecom"
-        moved = client.post(
-            "/score",
-            json={
-                "customer_id": legitimate["customer_id"],
-                "transaction": tampered,
-                "history": legitimate["history"],
-            },
-        ).json()["fraud_probability"]
-        print(f"      takeover preset: {base:.4f} -> {moved:.4f}")
-        _assert(moved > base, "the takeover preset raises the score")
+        for mechanism in ("card_testing", "account_takeover"):
+            episode = client.post(
+                "/demo/episode",
+                json={"case_id": legitimate["id"], "mechanism": mechanism},
+            )
+            _assert(episode.status_code == 200, f"{mechanism}: episode built")
+            burst = episode.json()
+            scored = client.post(
+                "/score",
+                json={
+                    "customer_id": legitimate["customer_id"],
+                    "transaction": burst["candidate"],
+                    "history": legitimate["history"] + burst["injected"],
+                },
+            ).json()
+            print(
+                f"      {mechanism}: {base['raw_score']:.2e} -> "
+                f"{scored['raw_score']:.2e} raw, "
+                f"{base['fraud_probability']:.4f} -> {scored['fraud_probability']:.4f} "
+                f"calibrated, {scored['decision']}"
+            )
+            # On the raw score, because isotonic pins the bottom of its range to
+            # exactly zero: a calibrated comparison would be comparing 0.0 to 0.0
+            # on a model whose raw output moved by four orders of magnitude.
+            _assert(
+                scored["raw_score"] > base["raw_score"],
+                f"{mechanism}: the injected burst raises the raw score",
+            )
+            _assert(
+                scored["decision"] != "approve",
+                f"{mechanism}: the injected burst is not approved",
+            )
+            _assert(
+                len(scored["top_contributors"]) > 0,
+                f"{mechanism}: contributors returned for a non-approved decision",
+            )
+
+        bad = client.post(
+            "/demo/episode", json={"case_id": legitimate["id"], "mechanism": "nonsense"}
+        )
+        _assert(bad.status_code == 400, "an unknown mechanism is a 400, not a crash")
+        missing = client.post(
+            "/demo/episode", json={"case_id": "no-such-case", "mechanism": "card_testing"}
+        )
+        _assert(missing.status_code == 404, "an unknown case is a 404")
 
         page = client.get("/")
         _assert(page.status_code == 200, "the demo page is served")
