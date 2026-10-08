@@ -77,11 +77,13 @@ blank panel. That behaviour is deliberate and is tested in
 ## Host it
 
 **Hugging Face Spaces** is the closest fit: it builds a Dockerfile from a git
-repository, gives a public URL, and needs no credit card. Check first whether
-Docker Spaces are available on your account's plan — Hugging Face has moved that
-line and the pricing page has lagged behind the behaviour, so confirm on
-[their pricing page](https://huggingface.co/pricing) rather than trusting this
-paragraph.
+repository, gives a public URL, and needs no credit card. One caveat worth
+checking before you count on it — Hugging Face's pricing page lists "Host
+ZeroGPU, Gradio & Docker Spaces" as a PRO benefit, and in mid-2026 several
+people reported free accounts being refused Docker Spaces with no announcement.
+CPU Basic hardware (2 vCPU, 16 GB) is free. Whether the Docker *SDK* is free on
+your account, [their pricing page](https://huggingface.co/pricing) is the
+authority, not this paragraph.
 
 ```bash
 # create the Space in the web UI (SDK: Docker, hardware: CPU basic), then:
@@ -94,16 +96,33 @@ a Space expects them, puts the `.onnx`/`.pt`/`.pkl` files in LFS, and pushes. On
 free CPU hardware a Space sleeps after a long idle period and wakes when someone
 opens it, so the first request after a quiet night is slow.
 
-**Anything else that runs a container** works the same way, with one thing to
-watch: the image carries CPU PyTorch, which pushes resident memory past what the
-smallest free tiers give you. Measure before you pick a plan —
+**Anything else that runs a container** works the same way. Measured here, in
+the container, under `--memory=1g --cpus=1`:
 
-```bash
-docker stats --no-stream fraud-demo
-```
+| | |
+|---|---|
+| Image size | 2.01 GB — CPU PyTorch is most of it |
+| Resident memory, serving | **290 MiB** |
+| Scoring latency, approve path | p50 2.0 ms, p95 3.1 ms |
+| Scoring latency, blocked path | p50 8.9 ms, p95 11.7 ms — it runs the explanation |
+| Startup to `model_loaded: true` | ~35 s, almost all of it importing torch |
 
-— and if you land somewhere with 512 MB, that is the number to check against,
-not the image size.
+290 MiB is the number that decides whether a plan fits, and it fits a 512 MB
+tier. The 2 GB image matters for build time and for registry pulls, not for
+whether the thing runs. If a host gives you 512 MB, you have headroom; if it
+gives you 256 MB, you do not.
+
+The blocked path costs about 4× the approve path because it runs a backward pass
+through the eager model for the contributing-transaction list. At the deployed
+alert rate of 0.9% that path is roughly where the p99 lives, which is worth
+knowing before you read a p99 measured only on approvals.
+
+One unexplained observation, recorded rather than tidied away: a single first
+blocked request after a container start took 2841 ms. It has not recurred in
+about twenty restarts, a cold first backward pass costs 10 ms on the host, and a
+controlled two-image comparison showed a startup warmup made no difference
+(14.8–18.6 ms without it, 12.3–45.2 ms with). So it is not torch's lazy
+initialisation, and I do not know what it was.
 
 **Or let people run it themselves.** For a reviewer reading the repository, two
 commands and a localhost URL are often better than a hosted link, because they
