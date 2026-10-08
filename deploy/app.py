@@ -43,6 +43,17 @@ from src.api.app import app, state
 
 LOGGER = logging.getLogger(__name__)
 
+# Uvicorn configures its own loggers and leaves the root logger alone, so
+# everything src.api.app logs at startup -- which model loaded, on which runtime,
+# how long the warmup took, and the warning when no bundle was found at all --
+# goes nowhere. The container logs showed four lines of uvicorn boilerplate and
+# nothing about the model. Configuring logging belongs in an entry point rather
+# than a library module, and this is the entry point.
+logging.basicConfig(
+    level=os.environ.get("FRAUD_LOG_LEVEL", "INFO"),
+    format="%(levelname)s %(name)s: %(message)s",
+)
+
 HERE = Path(__file__).resolve().parent
 DEMO_DATA = Path(os.environ.get("FRAUD_DEMO_DATA", str(HERE / "demo_data.json")))
 INDEX = HERE / "static" / "index.html"
