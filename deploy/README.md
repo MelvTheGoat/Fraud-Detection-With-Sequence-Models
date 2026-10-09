@@ -96,6 +96,47 @@ a Space expects them, puts the `.onnx`/`.pt`/`.pkl` files in LFS, and pushes. On
 free CPU hardware a Space sleeps after a long idle period and wakes when someone
 opens it, so the first request after a quiet night is slow.
 
+**Render** works, with one real caveat. Their free plan is 512 MB and **0.1 CPU**,
+and at that share the service runs correctly while missing its own latency
+budget by several multiples, so `/metrics` reports `within_budget: false`.
+
+```bash
+make simulate
+python -m src.experiment --seeds 0 --models gru
+python -m deploy.make_demo_data
+./deploy/push_render.sh deploy-render     # branch carrying the model bundle
+```
+
+Then in Render: **New > Blueprint**, pick the repo, set the branch to
+`deploy-render`. `render.yaml` at that branch's root configures the rest.
+
+The branch exists because `artifacts/` is gitignored — correctly, it is
+generated — so a service pointed at `main` dies on `COPY artifacts` with nothing
+in the log to explain it. The branch is a build input with a single commit and no
+history; never merge it.
+
+Measured at each CPU share, serving the real bundle:
+
+| | cold start | approve p50 | blocked p50 | 50 ms budget |
+|---|---|---|---|---|
+| 1.0 CPU | 4 s | 2.0 ms | 8.9 ms | met |
+| 0.5 CPU (Render `starter`) | 17 s | 3.9 ms | 14.0 ms | met |
+| 0.1 CPU (Render `free`) | 124 s | 87.2 ms | 192.2 ms | **missed, p99 1519 ms** |
+
+Free also sleeps after 15 minutes idle, and waking it means paying that 124 s
+again — most of which is importing torch. A visitor clicking a cold link waits
+over two minutes. `starter` is 0.5 CPU and always on.
+
+Do not be tempted to make the budget configurable and lower it for the free box.
+The 50 ms comes from a card authorisation timing out at the acquirer, not from
+the hardware. A deployment that misses it has failed a requirement, not been
+measured against the wrong one.
+
+One more Render-specific thing: `healthCheckPath: /health` returns HTTP 200 even
+while reporting `status: "degraded"` with no model loaded. That is deliberate
+upstream, but it means Render's health check proves the process is serving, not
+that the model is there. Open `/health` yourself after the first deploy.
+
 **Anything else that runs a container** works the same way. Measured here, in
 the container, under `--memory=1g --cpus=1`:
 
