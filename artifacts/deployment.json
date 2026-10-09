@@ -1,0 +1,12 @@
+{
+  "model_name": "gru_bce",
+  "model_family": "gru",
+  "model_version": "0.1.0",
+  "block_threshold": 0.08181818181818182,
+  "review_threshold": 0.016363636363636365,
+  "calibration": "isotonic",
+  "temperature": null,
+  "n_parameters": 78031,
+  "trained_on": "synthetic (src/simulate.py)",
+  "selected_because": "lowest mean validation cost per transaction across seeds; seed 0 is the run closest to that arm's mean"
+}
