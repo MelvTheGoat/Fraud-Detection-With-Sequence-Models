@@ -51,13 +51,21 @@ RUN useradd --create-home --uid 1000 scoring && \
     chown -R scoring:scoring /app
 USER scoring
 
-# 7860 is the port Spaces expects by default; it is also declared in the Space
-# README's app_port so this stays explicit rather than conventional.
+# 7860 is the port Hugging Face Spaces expects, and it is declared in the Space
+# README's app_port. Render instead sets $PORT (10000 by default) and will not
+# route to a container listening anywhere else, so the port is read from the
+# environment with the Spaces value as the fallback. That makes the CMD shell
+# form rather than exec form: exec form does no variable expansion, so the
+# container would literally try to bind to a port named "$PORT".
+ENV PORT=7860
 EXPOSE 7860
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
-    CMD python -c "import urllib.request,sys,json; \
-r=json.load(urllib.request.urlopen('http://127.0.0.1:7860/health')); \
+# --start-period is generous because the start is dominated by importing torch,
+# and that scales with the CPU share. Measured cold start to model_loaded:
+# 4 s at 1 CPU, 17 s at 0.5 CPU, 124 s at 0.1 CPU.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
+    CMD python -c "import os,urllib.request,sys,json; \
+r=json.load(urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','7860')+'/health')); \
 sys.exit(0 if r['model_loaded'] else 1)"
 
-CMD ["uvicorn", "deploy.app:app", "--host", "0.0.0.0", "--port", "7860", "--workers", "1"]
+CMD exec uvicorn deploy.app:app --host 0.0.0.0 --port "${PORT:-7860}" --workers 1

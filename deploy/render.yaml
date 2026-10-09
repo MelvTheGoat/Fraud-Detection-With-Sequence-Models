@@ -1,0 +1,61 @@
+# Render Blueprint for the scoring demo.
+#
+# This file belongs at the ROOT of whatever branch Render builds, next to the
+# Dockerfile. deploy/push_render.sh puts both there; it is not read from this
+# directory.
+#
+# On the free plan, read the note on `plan:` below before you believe the
+# latency numbers the service reports about itself.
+services:
+  - type: web
+    name: fraud-scoring
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+
+    # free  = 512 MB / 0.1 CPU, sleeps after 15 minutes idle
+    # starter = 512 MB / 0.5 CPU, always on
+    #
+    # Measured in this container at each share, serving the real bundle:
+    #
+    #            cold start   approve p50   blocked p50   50 ms budget
+    #   1.0 CPU        4 s        2.0 ms        8.9 ms   met
+    #   0.5 CPU       17 s        3.9 ms       14.0 ms   met
+    #   0.1 CPU      124 s       87.2 ms      192.2 ms   MISSED (p99 1519 ms)
+    #
+    # The free plan runs the service correctly and misses its own stated
+    # latency budget by several multiples, so /metrics reports
+    # within_budget: false. That is the service being honest, not broken.
+    #
+    # Resist the temptation to make the budget configurable and lower it here.
+    # The 50 ms comes from a card authorisation timing out at the acquirer, not
+    # from the hardware -- it is a requirement, so a deployment that misses it
+    # has failed the requirement rather than been measured against the wrong
+    # one. Reporting within_budget: false on a 0.1 CPU box is the system
+    # working. Switch to `starter` if you want it met.
+    plan: free
+
+    # /health returns HTTP 200 even when it reports status "degraded" with no
+    # model loaded -- deliberate upstream, so an orchestrator sees a
+    # diagnosable service rather than a crash loop. Render only reads the
+    # status code, so this check proves the process is up and serving, NOT that
+    # a model is loaded. Open /health yourself after the first deploy.
+    healthCheckPath: /health
+
+    envVars:
+      # Render routes to this port and nothing else.
+      - key: PORT
+        value: 10000
+      # Batch size 1 has nothing to parallelise across, and thread hand-off
+      # shows up directly in tail latency. On a fractional CPU it is worse.
+      - key: OMP_NUM_THREADS
+        value: 1
+      - key: MKL_NUM_THREADS
+        value: 1
+      - key: FRAUD_ARTIFACT_DIR
+        value: /app/artifacts
+      # The container filesystem is ephemeral on Render, so this log does not
+      # survive a restart or a spin-down. Fine for a demo; it would be a
+      # compliance failure in production, where it belongs on a durable disk.
+      - key: FRAUD_AUDIT_PATH
+        value: /app/audit/decisions.jsonl
