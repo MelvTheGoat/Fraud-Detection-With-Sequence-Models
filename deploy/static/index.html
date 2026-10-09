@@ -3,574 +3,593 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Transaction fraud scoring</title>
+<title>Check a card transaction</title>
 <style>
   :root {
+    --bg: #f4f6f8;
+    --surface: #ffffff;
+    --sunken: #edeff3;
     --ink: #15181d;
-    --muted: #5f6673;
-    --line: #dfe3e9;
-    --bg: #f6f7f9;
-    --card: #ffffff;
-    --accent: #2f5bd0;
-    --approve: #1a7f4b;
-    --review: #9a6400;
-    --block: #b42318;
-    --syn: #7a4fc0;
-    --code-bg: #f1f3f6;
+    --muted: #5e6675;
+    --line: #dde1e8;
+    --accent: #1f4fd8;
+    --approve: #0f7a46;
+    --review: #8f6005;
+    --block: #ab2117;
+    --new: #6d3fb5;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --ink: #e8eaee; --muted: #9aa3b2; --line: #2b313b; --bg: #13161b;
-      --card: #1a1e25; --accent: #7aa0f5; --approve: #4ec98a; --review: #e0a93c;
-      --block: #f2726a; --syn: #b394ea; --code-bg: #101318;
+      --bg: #11141a; --surface: #1a1e26; --sunken: #13171f; --ink: #e7eaef;
+      --muted: #99a2b2; --line: #2a303b; --accent: #7f9cf5; --approve: #45c489;
+      --review: #ddab42; --block: #f0796f; --new: #b193ea;
+      color-scheme: dark;
     }
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; padding: 0 16px 64px;
+    margin: 0; padding: 0 16px 72px;
     font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     color: var(--ink); background: var(--bg);
   }
-  .wrap { max-width: 760px; margin: 0 auto; }
-  header { padding: 28px 0 8px; }
-  h1 { font-size: 22px; line-height: 1.25; margin: 0 0 6px; }
-  h2 { font-size: 13px; margin: 26px 0 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-  h3 { font-size: 14px; margin: 0 0 8px; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  header { padding: 30px 0 6px; }
+  h1 { font-size: clamp(21px, 5.2vw, 27px); line-height: 1.2; margin: 0 0 8px; letter-spacing: -.01em; }
+  h2 { font-size: 16px; margin: 0 0 4px; }
+  h3 { font-size: 14px; margin: 18px 0 8px; }
   p { margin: 0 0 12px; }
-  .sub { color: var(--muted); font-size: 13.5px; }
+  .sub { color: var(--muted); }
+  .small { font-size: 13px; color: var(--muted); }
   a { color: var(--accent); }
-  .card {
-    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-    padding: 16px; margin: 0 0 14px;
+
+  .step { margin-top: 26px; }
+  .step > .n {
+    display: inline-block; font-size: 11.5px; font-weight: 700; letter-spacing: .09em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
   }
-  .notice { font-size: 13.5px; color: var(--muted); }
-  .notice strong { color: var(--ink); }
-  label { display: block; font-size: 12.5px; color: var(--muted); margin: 0 0 4px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
-  select, input, button {
-    width: 100%; font: inherit; font-size: 14px; color: var(--ink);
-    background: var(--card); border: 1px solid var(--line);
-    border-radius: 7px; padding: 9px 10px;
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+
+  label { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin: 0 0 5px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 13px; }
+  input, select, button, textarea {
+    width: 100%; font: inherit; font-size: 15px; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+    padding: 11px 12px; min-width: 0;
   }
-  button {
+  input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button.primary {
     background: var(--accent); color: #fff; border-color: transparent;
-    font-weight: 600; cursor: pointer; padding: 12px;
+    font-weight: 600; font-size: 16px; padding: 14px; cursor: pointer;
   }
-  button:disabled { opacity: .55; cursor: default; }
-  button.ghost { background: transparent; color: var(--accent); border-color: var(--line); font-weight: 500; padding: 9px; }
-  button.ghost.on { background: var(--syn); color: #fff; border-color: transparent; }
+  button.primary:disabled { opacity: .55; cursor: default; }
+  button.sec {
+    background: var(--surface); color: var(--accent); border-color: var(--line);
+    font-weight: 500; font-size: 14px; padding: 10px 12px; cursor: pointer;
+  }
+  button.sec.on { background: var(--new); color: #fff; border-color: transparent; }
   .row { display: flex; gap: 10px; flex-wrap: wrap; }
-  .row > * { flex: 1 1 150px; }
-  .verdict { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-  .prob { font-size: 38px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
-  .pill {
-    font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-    padding: 5px 10px; border-radius: 999px; color: #fff;
+  .row > * { flex: 1 1 160px; }
+
+  .tag {
+    display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .05em;
+    text-transform: uppercase; color: var(--new); margin-left: 6px; vertical-align: 1px;
   }
-  .pill.approve { background: var(--approve); }
-  .pill.review  { background: var(--review); }
-  .pill.block   { background: var(--block); }
-  .bar { height: 8px; border-radius: 999px; background: var(--code-bg); margin: 14px 0 6px; overflow: hidden; }
-  .bar > span { display: block; height: 100%; background: var(--accent); }
-  .ticks { position: relative; height: 16px; font-size: 10.5px; color: var(--muted); }
-  .ticks i { position: absolute; transform: translateX(-50%); font-style: normal; white-space: nowrap; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); }
-  th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; }
-  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  tr.syn td { color: var(--syn); }
+
+  .verdict { text-align: center; padding: 6px 0 2px; }
+  .word { font-size: clamp(30px, 8vw, 40px); font-weight: 800; letter-spacing: -.02em; line-height: 1.1; }
+  .word.approve { color: var(--approve); }
+  .word.review { color: var(--review); }
+  .word.block { color: var(--block); }
+  .says { font-size: 15.5px; margin-top: 8px; }
+
+  .meter { margin: 20px 0 6px; }
+  .track { position: relative; height: 10px; border-radius: 999px; background: var(--sunken); overflow: hidden; }
+  .fill { height: 100%; border-radius: 999px; transition: width .3s ease; }
+  .fill.approve { background: var(--approve); }
+  .fill.review { background: var(--review); }
+  .fill.block { background: var(--block); }
+  @media (prefers-reduced-motion: reduce) { .fill { transition: none; } }
+  .ticks { position: relative; height: 16px; font-size: 10.5px; color: var(--muted); margin-top: 5px; }
+  .ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+
+  details { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); margin-top: 11px; }
+  details > summary {
+    cursor: pointer; padding: 13px 15px; font-weight: 600; font-size: 14.5px; list-style: none;
+  }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before { content: "+  "; color: var(--muted); font-weight: 400; }
+  details[open] > summary::before { content: "\2212  "; }
+  details > div { padding: 0 15px 15px; }
+
   .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
-  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px; margin: 0; }
-  .kv dt { color: var(--muted); }
-  .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
-  .truth { border-left: 3px solid var(--accent); padding-left: 12px; font-size: 13.5px; }
-  .synnote { border-left: 3px solid var(--syn); padding-left: 12px; font-size: 13px; color: var(--muted); margin: 12px 0 0; }
-  .err { color: var(--block); font-size: 13.5px; }
-  .caveat { font-size: 12.5px; color: var(--muted); font-style: italic; }
-  footer { color: var(--muted); font-size: 12.5px; padding-top: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; padding: 6px 7px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; }
+  tr.inj td { color: var(--new); }
+
+  dl.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-size: 13.5px; }
+  dl.kv dt { color: var(--muted); }
+  dl.kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+  .err { color: var(--block); font-size: 14px; }
   .spin { display: inline-block; width: 13px; height: 13px; border: 2px solid currentColor;
           border-right-color: transparent; border-radius: 50%; animation: s .7s linear infinite; vertical-align: -2px; }
   @keyframes s { to { transform: rotate(360deg); } }
+  footer { margin-top: 34px; padding-top: 16px; border-top: 1px solid var(--line); }
 </style>
 </head>
 <body>
 <div class="wrap">
 
 <header>
-  <h1>Transaction fraud scoring</h1>
-  <p class="sub">A sequence model served the way it would be served for real: calibrated
-  probability, cost-chosen thresholds, ONNX Runtime, one transaction at a time.</p>
+  <h1>Check a card transaction</h1>
+  <p class="sub">Describe a payment and this will tell you whether to approve it,
+  send it for review, or block it &mdash; judged against that cardholder's own
+  spending history.</p>
 </header>
 
-<div class="card notice" id="notice">Loading&hellip;</div>
-
-<h2>1 &middot; Pick a customer</h2>
-<div class="card">
-  <label for="case">Each case carries a real customer history from the test period &mdash;
-  transactions the model never trained on.</label>
-  <select id="case"></select>
-  <p class="sub" id="caseNote" style="margin-top:12px"></p>
-  <dl class="kv" id="caseStats"></dl>
+<div class="step">
+  <span class="n">Step 1 &mdash; whose card is it</span>
+  <div class="card">
+    <select id="case" aria-label="Cardholder"></select>
+    <dl class="kv" id="who" style="margin-top:13px"></dl>
+  </div>
 </div>
 
-<h2>2 &middot; Change what the model sees</h2>
-<div class="card">
-  <h3>Inject a fraud episode</h3>
-  <p class="sub">Both mechanisms this model was trained against are <em>bursts</em> of
-  three to fifteen transactions, not single anomalies. The features it reads &mdash;
-  velocity in the last hour, merchant novelty, amount against this customer's own
-  median &mdash; are properties of a sequence. So these buttons graft a synthetic
-  burst onto the customer's real history. Editing one transaction barely moves the
-  score, and that is the model being right, not broken.</p>
-  <div class="row">
-    <button class="ghost" id="ep-card_testing" type="button">Card testing burst</button>
-    <button class="ghost" id="ep-account_takeover" type="button">Account takeover</button>
-    <button class="ghost" id="ep-none" type="button">No episode</button>
+<div class="step">
+  <span class="n">Step 2 &mdash; the payment</span>
+  <div class="card">
+    <p class="small" style="margin-top:0">Type anything you like in these boxes.
+    The lists are only suggestions.</p>
+    <div class="grid" id="form"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="sec" id="reset" type="button">Start over</button>
+      <button class="sec" id="ep-card_testing" type="button">Try a card-testing burst</button>
+      <button class="sec" id="ep-account_takeover" type="button">Try a stolen-account spree</button>
+    </div>
+    <p class="small" id="epNote" hidden style="margin:12px 0 0"></p>
   </div>
-  <p class="synnote" id="epNote" hidden></p>
-
-  <h3 style="margin-top:20px">Or edit the transaction being authorised</h3>
-  <div class="grid" id="form"></div>
-  <div class="row" style="margin-top:12px">
-    <button class="ghost" id="reset" type="button">Reset the transaction</button>
-  </div>
-
-  <div style="margin-top:14px"><button id="score" type="button">Score this transaction</button></div>
-  <p class="err" id="error" hidden></p>
 </div>
 
-<div id="result" hidden>
-  <h2>3 &middot; The decision</h2>
+<div class="step">
+  <button class="primary" id="go" type="button">Check this payment</button>
+  <p class="err" id="error" hidden style="margin-top:10px"></p>
+</div>
+
+<div class="step" id="result" hidden>
+  <span class="n">The decision</span>
   <div class="card">
     <div class="verdict">
-      <span class="prob" id="prob">&mdash;</span>
-      <span class="pill" id="decision">&mdash;</span>
+      <div class="word" id="word">&mdash;</div>
+      <div class="says" id="says"></div>
     </div>
-    <p class="sub" id="rawNote" style="margin:10px 0 0"></p>
-    <div class="bar"><span id="barFill"></span></div>
-    <div class="ticks" id="ticks"></div>
-    <dl class="kv" id="meta" style="margin-top:14px"></dl>
+    <div class="meter">
+      <div class="track"><div class="fill" id="fill" style="width:0%"></div></div>
+      <div class="ticks" id="ticks"></div>
+    </div>
+    <p class="small" id="numbers" style="margin:14px 0 0"></p>
   </div>
 
-  <div class="card" id="contribCard" hidden>
-    <h3>Prior transactions the model read from</h3>
-    <div class="scroll"><table id="contrib"></table></div>
-    <p class="caveat" id="caveat"></p>
-  </div>
+  <details id="whyBox" hidden>
+    <summary>Which earlier payments influenced this</summary>
+    <div>
+      <div class="scroll"><table id="why"></table></div>
+      <p class="small" id="whyNote"></p>
+    </div>
+  </details>
 
+  <details id="truthBox">
+    <summary>Was this one really fraud?</summary>
+    <div><p class="small" id="truth" style="margin:0"></p></div>
+  </details>
+</div>
+
+<div class="step">
+  <span class="n">Their recent payments</span>
   <div class="card">
-    <button class="ghost" id="revealBtn" type="button">Reveal the ground truth</button>
-    <div class="truth" id="truth" hidden style="margin-top:12px"></div>
+    <div class="scroll"><table id="history"></table></div>
+    <p class="small" id="histNote" style="margin:11px 0 0"></p>
   </div>
 </div>
 
-<h2>What the model sees</h2>
-<div class="card">
-  <div class="scroll"><table id="history"></table></div>
-  <p class="sub" id="histNote" style="margin:10px 0 0"></p>
+<div class="step">
+  <span class="n">Good to know</span>
+
+  <details>
+    <summary>Why some values say &ldquo;new&rdquo;</summary>
+    <div>
+      <p class="small">The model learned from a simulated card portfolio covering
+      eight countries: the UK, Ireland, France, Germany, Spain, the Netherlands,
+      Poland and the US. Anything outside what it saw &mdash; Nigeria, Kenya, a
+      merchant code it has never met, a typo &mdash; lands in a single
+      <em>&ldquo;never seen this before&rdquo;</em> slot.</p>
+      <p class="small">So it does not know Nigeria specifically. NG, KE, ZA and a
+      nonsense code like XX all produce exactly the same score, because to the
+      model they are the same thing: unfamiliar. That is still useful &mdash;
+      unfamiliarity is a genuine fraud signal, and the model uses it &mdash; but
+      it is not country knowledge, and treating it as such would be wrong.</p>
+      <p class="small">Making it actually understand Nigerian spending means
+      retraining on Nigerian data. That is a real piece of work, not a setting.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>How it decides</summary>
+    <div>
+      <p class="small">It reads the last 32 payments on the card, in order, and
+      asks what this new one looks like <em>given that sequence</em>. Not rules
+      like &ldquo;over &pound;500 is risky&rdquo; &mdash; it compares against how
+      this particular person normally spends: their usual amounts, their
+      merchants, their devices, how fast they usually pay.</p>
+      <p class="small">That is why changing one payment often barely moves the
+      score, while the two burst buttons move it a long way. Real card fraud comes
+      in runs, and runs are what the model is built to catch.</p>
+      <p class="small">The two cut-offs were not picked for neatness. They come
+      from costing mistakes: roughly &pound;8 of damage for wrongly blocking a
+      good customer, and &pound;15 plus the money itself for letting fraud
+      through. The thresholds are whatever minimised that total.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>How good is it, and on what data</summary>
+    <div>
+      <p class="small" id="perf"></p>
+      <p class="small"><strong>The data is synthetic.</strong> Every payment here
+      comes from a simulator, not a real card portfolio. The figures describe that
+      simulator and say nothing about real-world fraud.</p>
+    </div>
+  </details>
 </div>
 
 <footer>
-  <p>Synthetic data throughout. <a href="/docs">API docs</a> &middot;
-  <a href="/model-info">model-info</a> &middot; <a href="/metrics">metrics</a> &middot;
-  <a href="/health">health</a> &middot;
-  <a id="src" href="https://github.com/MelvTheGoat/Fraud-Detection-With-Sequence-Models">source</a></p>
+  <p class="small" id="foot"></p>
 </footer>
 
 </div>
 
+<datalist id="dl-merchant_id"></datalist>
+<datalist id="dl-mcc"></datalist>
+<datalist id="dl-device_id"></datalist>
+<datalist id="dl-device_type"></datalist>
+<datalist id="dl-country"></datalist>
+<datalist id="dl-entry_mode"></datalist>
+
 <script>
 "use strict";
 
-const FIELDS = [
-  { key: "amount",      label: "Amount",      type: "number", step: "0.01", min: "0" },
-  { key: "merchant_id", label: "Merchant",    type: "vocab" },
-  { key: "mcc",         label: "Category (MCC)", type: "vocab" },
-  { key: "device_id",   label: "Device",      type: "device" },
-  { key: "device_type", label: "Device type", type: "vocab" },
-  { key: "country",     label: "Country",     type: "vocab" },
-  { key: "channel",     label: "Channel",     type: "vocab" },
-  { key: "entry_mode",  label: "Entry mode",  type: "vocab" },
+/* Countries offered as suggestions. Only the first eight are in the training
+   data; the rest are here because people need to type them, and the page is
+   explicit that everything beyond those eight collapses to one "unfamiliar"
+   value as far as the model is concerned. */
+const COUNTRY_SUGGESTIONS = [
+  "GB", "IE", "FR", "DE", "ES", "NL", "PL", "US",
+  "NG", "GH", "KE", "ZA", "TZ", "UG", "EG", "MA", "SN", "CI", "CM", "ET",
+  "AE", "SA", "IN", "PK", "BD", "CN", "JP", "KR", "TR", "RU",
+  "BR", "MX", "AR", "CA", "AU", "NZ", "IT", "PT", "SE", "NO", "DK", "FI",
+  "BE", "CH", "AT", "GR", "CZ", "RO", "HU", "UA",
 ];
 
-let DATA = null;       // the case file
-let INFO = null;       // /model-info
-let activeCase = null;
-let candidate = null;  // the transaction being scored
-let episode = null;    // injected burst, or null
+const FIELDS = [
+  { key: "amount", label: "Amount (£)", type: "number", step: "0.01", min: "0" },
+  { key: "merchant_id", label: "Merchant", vocab: "merchant_id" },
+  { key: "mcc", label: "Merchant category code", vocab: "mcc" },
+  { key: "device_id", label: "Device", vocab: "device_id" },
+  { key: "device_type", label: "Device type", vocab: "device_type" },
+  { key: "country", label: "Country", vocab: "country" },
+  { key: "channel", label: "Where", type: "select",
+    options: [["online", "Online"], ["in_store", "In store"], ["unknown", "Not known"]] },
+  { key: "entry_mode", label: "How it was paid", vocab: "entry_mode" },
+];
 
+let DATA = null, INFO = null;
+let kase = null, txn = null, episode = null;
 const $ = (id) => document.getElementById(id);
 
-/* The history actually sent: the customer's real transactions plus whatever
-   burst is grafted on. One function so the table, the request and the
-   contributor lookup can never disagree about what the window contained. */
-function effectiveHistory() {
-  return episode ? activeCase.history.concat(episode.injected) : activeCase.history;
+const money = (v) => "£" + Number(v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const when = (iso) => String(iso).slice(0, 16).replace("T", " ");
+const pct = (p) => (100 * p).toFixed(2) + "%";
+
+function known(field, value) {
+  if (field === "device_id") {
+    return (kase.customer_devices || []).includes(String(value));
+  }
+  const v = DATA.vocab[field];
+  return !v || v.includes(String(value));
 }
 
-function fmtMoney(x) {
-  return "£" + Number(x).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function history() {
+  return episode ? kase.history.concat(episode.injected) : kase.history;
 }
 
-/* The simulator writes nanosecond precision, and Safari rejects an ISO string
-   with more than three fractional digits where V8 tolerates it. Slicing the
-   string sidesteps a date parser the demo does not need. */
-function fmtTime(iso) {
-  return String(iso).slice(0, 16).replace("T", " ");
-}
-
-/* Isotonic calibration maps the bottom of its range to exactly zero, so a
-   legitimate transaction renders as "0.00%". Reporting that as a flat zero
-   would be the one genuinely overconfident number on the page. */
-function fmtProb(p) {
-  if (p >= 0.0005) return (100 * p).toFixed(2) + "%";
-  if (p > 0) return "<0.05%";
-  return "~0%";
-}
-
-function fmtSci(x) {
-  if (x >= 0.001) return (100 * x).toFixed(3) + "%";
-  return (100 * x).toExponential(1) + "%";
-}
-
-/* Values the UI invents (a device that does not exist, a country the customer
-   has never used) are the interesting ones, so every dropdown allows a value
-   outside the dataset vocabulary rather than constraining the form to it. */
-function optionsFor(key) {
-  const vocab = (DATA.vocab[key] || []).slice();
-  const current = candidate[key];
-  if (current != null && !vocab.includes(String(current))) vocab.unshift(String(current));
-  return vocab;
+function fillDatalists() {
+  const sets = {
+    merchant_id: (DATA.vocab.merchant_id || []).slice(0, 60),
+    mcc: DATA.vocab.mcc || [],
+    device_type: DATA.vocab.device_type || [],
+    entry_mode: DATA.vocab.entry_mode || [],
+    country: COUNTRY_SUGGESTIONS,
+    device_id: (kase.customer_devices || []).slice(),
+  };
+  for (const [key, values] of Object.entries(sets)) {
+    $("dl-" + key).innerHTML = values
+      .map((v) => "<option value='" + v + "'></option>").join("");
+  }
 }
 
 function buildForm() {
+  fillDatalists();
   const host = $("form");
   host.innerHTML = "";
   for (const f of FIELDS) {
     const wrap = document.createElement("div");
-    const label = document.createElement("label");
-    label.textContent = f.label;
-    label.htmlFor = "f-" + f.key;
-    wrap.appendChild(label);
+    const lab = document.createElement("label");
+    lab.htmlFor = "f-" + f.key;
+    lab.textContent = f.label;
+    const tag = document.createElement("span");
+    tag.className = "tag";
+    tag.id = "tag-" + f.key;
+    lab.appendChild(tag);
+    wrap.appendChild(lab);
 
     let el;
-    if (f.type === "number") {
-      el = document.createElement("input");
-      el.type = "number"; el.step = f.step; el.min = f.min;
-      el.value = candidate[f.key];
-    } else if (f.type === "device") {
+    if (f.type === "select") {
       el = document.createElement("select");
-      const known = activeCase.customer_devices.slice();
-      if (!known.includes(String(candidate.device_id))) known.unshift(String(candidate.device_id));
-      if (!known.includes("D999999_9")) known.push("D999999_9");
-      for (const v of known) {
-        const o = document.createElement("option");
-        o.value = v;
-        o.textContent = v === "D999999_9" ? v + "  (never seen before)" : v;
-        el.appendChild(o);
-      }
-      el.value = String(candidate.device_id);
+      el.innerHTML = f.options
+        .map(([v, t]) => "<option value='" + v + "'>" + t + "</option>").join("");
+      el.value = String(txn[f.key]);
     } else {
-      el = document.createElement("select");
-      for (const v of optionsFor(f.key)) {
-        const o = document.createElement("option");
-        o.value = v; o.textContent = v;
-        el.appendChild(o);
+      el = document.createElement("input");
+      if (f.type === "number") {
+        el.type = "number"; el.step = f.step; el.min = f.min;
+      } else {
+        el.type = "text";
+        el.autocapitalize = "characters";
+        el.spellcheck = false;
+        el.setAttribute("list", "dl-" + f.vocab);
       }
-      el.value = String(candidate[f.key]);
+      el.value = txn[f.key];
     }
     el.id = "f-" + f.key;
-    const sync = () => { candidate[f.key] = f.type === "number" ? Number(el.value) : el.value; };
-    el.addEventListener("change", sync);
+    const sync = () => {
+      txn[f.key] = f.type === "number" ? Number(el.value) : el.value;
+      markNew();
+    };
     el.addEventListener("input", sync);
+    el.addEventListener("change", sync);
     wrap.appendChild(el);
     host.appendChild(wrap);
   }
+  markNew();
+}
+
+/* Marking unfamiliar values is not decoration. Novelty is one of the things the
+   model actually reads, and it is also the honest way to show that a country
+   outside the training set is being treated as "unknown" rather than as itself. */
+function markNew() {
+  for (const f of FIELDS) {
+    const tag = $("tag-" + f.key);
+    if (!tag) continue;
+    if (f.type === "number" || f.type === "select") { tag.textContent = ""; continue; }
+    tag.textContent = known(f.key, txn[f.key]) ? "" : "new to the model";
+  }
+}
+
+function renderWho() {
+  $("who").innerHTML =
+    "<dt>Usually spends</dt><dd>" + money(kase.customer_median_amount) + " a payment</dd>" +
+    "<dt>Pays from</dt><dd>" + kase.customer_countries.join(", ") + "</dd>" +
+    "<dt>Devices</dt><dd>" + kase.customer_devices.length + " known</dd>" +
+    "<dt>Payments on file</dt><dd>" + kase.history.length + "</dd>";
 }
 
 function renderHistory() {
-  const all = effectiveHistory();
-  const injected = episode ? new Set(episode.injected.map((r) => r.txn_id)) : new Set();
-  const rows = all.slice(-22).reverse();
+  const all = history();
+  const inj = new Set(episode ? episode.injected.map((r) => r.txn_id) : []);
+  const rows = all.slice(-12).reverse();
   $("history").innerHTML =
     "<thead><tr><th>When</th><th class='num'>Amount</th><th>Merchant</th>" +
-    "<th>Device</th><th>Country</th><th>Channel</th></tr></thead><tbody>" +
+    "<th>Country</th><th>Where</th></tr></thead><tbody>" +
     rows.map((r) =>
-      "<tr" + (injected.has(r.txn_id) ? " class='syn'" : "") + ">" +
-      "<td class='mono'>" + fmtTime(r.timestamp) + "</td>" +
-      "<td class='num'>" + fmtMoney(r.amount) + "</td>" +
+      "<tr" + (inj.has(r.txn_id) ? " class='inj'" : "") + ">" +
+      "<td class='mono'>" + when(r.timestamp) + "</td>" +
+      "<td class='num'>" + money(r.amount) + "</td>" +
       "<td class='mono'>" + r.merchant_id + "</td>" +
-      "<td class='mono'>" + r.device_id + "</td>" +
-      "<td>" + r.country + "</td><td>" + r.channel + "</td></tr>"
-    ).join("") +
-    "</tbody>";
-
-  let note = "Showing the most recent " + rows.length + " of " + all.length +
-             " prior transactions. All " + all.length + " are sent with every request, " +
-             "because every position in the 32-step window needs its own 31 " +
-             "transactions of history behind it.";
-  if (episode) {
-    note += " The " + episode.injected.length + " rows in purple are synthetic — " +
-            "they never happened.";
-  }
-  $("histNote").innerHTML = note;
+      "<td>" + r.country + "</td>" +
+      "<td>" + (r.channel === "in_store" ? "In store" : "Online") + "</td></tr>"
+    ).join("") + "</tbody>";
+  $("histNote").textContent =
+    "Last " + rows.length + " of " + all.length + " payments on file. All of them " +
+    "are sent when you check a payment." +
+    (episode ? " The " + episode.injected.length + " in purple are made up, added by the button you pressed." : "");
 }
 
 function selectCase(id) {
-  activeCase = DATA.cases.find((c) => c.id === id);
+  kase = DATA.cases.find((c) => c.id === id);
   episode = null;
-  candidate = JSON.parse(JSON.stringify(activeCase.candidate));
-  $("caseNote").textContent = activeCase.note;
-  $("caseStats").innerHTML =
-    "<dt>Customer</dt><dd class='mono'>" + activeCase.customer_id + "</dd>" +
-    "<dt>Prior transactions</dt><dd>" + activeCase.history.length + "</dd>" +
-    "<dt>Their median amount</dt><dd>" + fmtMoney(activeCase.customer_median_amount) + "</dd>" +
-    "<dt>Devices they use</dt><dd class='mono'>" + activeCase.customer_devices.join(", ") + "</dd>" +
-    "<dt>Countries</dt><dd>" + activeCase.customer_countries.join(", ") + "</dd>";
+  txn = JSON.parse(JSON.stringify(kase.candidate));
   clearEpisodeButtons();
   $("epNote").hidden = true;
+  renderWho();
   buildForm();
   renderHistory();
   $("result").hidden = true;
-  $("truth").hidden = true;
 }
 
 function clearEpisodeButtons() {
   for (const m of ["card_testing", "account_takeover"]) $("ep-" + m).classList.remove("on");
 }
 
-async function applyEpisode(mechanism) {
-  if (mechanism === null) {
-    episode = null;
-    candidate = JSON.parse(JSON.stringify(activeCase.candidate));
-    clearEpisodeButtons();
-    $("epNote").hidden = true;
-    buildForm();
-    renderHistory();
-    return;
-  }
-  const btn = $("ep-" + mechanism);
-  const original = btn.textContent;
+async function applyEpisode(mech) {
+  const btn = $("ep-" + mech);
   btn.disabled = true;
   try {
     const res = await fetch("/demo/episode", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ case_id: activeCase.id, mechanism: mechanism }),
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ case_id: kase.id, mechanism: mech }),
     });
     if (!res.ok) throw new Error("HTTP " + res.status);
     episode = await res.json();
-    candidate = JSON.parse(JSON.stringify(episode.candidate));
+    txn = JSON.parse(JSON.stringify(episode.candidate));
     clearEpisodeButtons();
     btn.classList.add("on");
     $("epNote").textContent = episode.explanation;
     $("epNote").hidden = false;
     buildForm();
     renderHistory();
+    await check();
   } catch (e) {
-    $("error").textContent = "Could not build the episode: " + e.message;
+    $("error").textContent = "Could not build that example: " + e.message;
     $("error").hidden = false;
   } finally {
     btn.disabled = false;
-    btn.textContent = original;
   }
 }
 
-async function score() {
-  const btn = $("score");
-  btn.disabled = true;
-  btn.innerHTML = "<span class='spin'></span> Scoring…";
-  $("error").hidden = true;
+const SAYS = {
+  approve: "Nothing here looks out of character for this cardholder.",
+  review: "Unusual enough to put in front of a human, not enough to decline.",
+  block: "This would be declined.",
+};
 
+async function check() {
+  const btn = $("go");
+  btn.disabled = true;
+  btn.innerHTML = "<span class='spin'></span> Checking…";
+  $("error").hidden = true;
   try {
     const res = await fetch("/score", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        customer_id: activeCase.customer_id,
-        transaction: candidate,
-        history: effectiveHistory(),
+        customer_id: kase.customer_id, transaction: txn, history: history(),
       }),
     });
-    const payload = await res.json();
-    if (!res.ok) throw new Error(payload.detail || ("HTTP " + res.status));
-    render(payload);
+    const r = await res.json();
+    if (!res.ok) throw new Error(r.detail || ("HTTP " + res.status));
+    render(r);
   } catch (e) {
-    $("error").textContent = "Scoring failed: " + e.message;
+    $("error").textContent = "Could not check that: " + e.message;
     $("error").hidden = false;
   } finally {
     btn.disabled = false;
-    btn.textContent = "Score this transaction";
+    btn.textContent = "Check this payment";
   }
 }
 
 function render(r) {
   $("result").hidden = false;
-  $("prob").textContent = fmtProb(r.fraud_probability);
-  const pill = $("decision");
-  pill.textContent = r.decision;
-  pill.className = "pill " + r.decision;
+  const d = r.decision;
+  $("word").textContent = d === "approve" ? "Approve" : d === "review" ? "Review" : "Block";
+  $("word").className = "word " + d;
+  $("says").textContent = SAYS[d];
 
-  let raw = "Raw model output " + fmtSci(r.raw_score) + ", mapped through " +
-            (INFO ? INFO.calibration : "the deployed") + " calibration.";
-  if (r.fraud_probability === 0) {
-    raw += " Isotonic regression pins the bottom of its range to exactly zero, " +
-           "which is why this reads as 0% rather than something very small — " +
-           "the raw score is the honest number here.";
-  }
-  $("rawNote").textContent = raw;
-
-  /* A linear bar over [0,1] puts every realistic score in the first pixel, so
-     the scale is the decision region: thresholds sit where you can see them. */
-  const review = INFO ? INFO.review_threshold : 0;
-  const top = Math.max(r.fraud_probability, r.threshold) * 1.35 + 0.005;
-  $("barFill").style.width = Math.min(100, (100 * r.fraud_probability) / top) + "%";
+  const top = Math.max(r.fraud_probability, r.threshold) * 1.35 + 0.006;
+  $("fill").className = "fill " + d;
+  $("fill").style.width = Math.min(100, (100 * r.fraud_probability) / top) + "%";
+  const at = (v) => Math.min(96, Math.max(3, (100 * v) / top));
+  const rev = INFO ? INFO.review_threshold : 0;
   $("ticks").innerHTML =
-    "<i style='left:" + Math.min(97, (100 * review) / top) + "%'>review " +
-      (100 * review).toFixed(2) + "%</i>" +
-    "<i style='left:" + Math.min(97, (100 * r.threshold) / top) + "%'>block " +
-      (100 * r.threshold).toFixed(2) + "%</i>";
+    "<span style='left:" + at(rev) + "%'>review above " + pct(rev) + "</span>" +
+    "<span style='left:" + at(r.threshold) + "%'>block above " + pct(r.threshold) + "</span>";
 
-  $("meta").innerHTML =
-    "<dt>Model</dt><dd>" + r.model_family + " v" + r.model_version +
-      (INFO ? " (" + INFO.model_name + ")" : "") + "</dd>" +
-    "<dt>Runtime</dt><dd>" + r.runtime + "</dd>" +
-    "<dt>Server latency</dt><dd>" + r.latency_ms.toFixed(2) + " ms</dd>" +
-    "<dt>History used</dt><dd>" + r.history_used + " prior transactions</dd>";
+  const p = r.fraud_probability;
+  const shown = p >= 0.0005 ? pct(p) : p > 0 ? "under 0.05%" : "effectively nil";
+  $("numbers").textContent =
+    "Estimated chance this is fraud: " + shown + ". Checked in " +
+    r.latency_ms.toFixed(0) + " ms against " + r.history_used + " earlier payments.";
 
-  const card = $("contribCard");
+  const box = $("whyBox");
   if (r.top_contributors && r.top_contributors.length) {
-    const injected = episode ? new Set(episode.injected.map((x) => x.txn_id)) : new Set();
-    card.hidden = false;
-    $("contrib").innerHTML =
-      "<thead><tr><th>Offset</th><th>When</th><th class='num'>Amount</th>" +
-      "<th>Merchant</th><th class='num'>Weight</th></tr></thead><tbody>" +
+    box.hidden = false;
+    const inj = new Set(episode ? episode.injected.map((x) => x.txn_id) : []);
+    $("why").innerHTML =
+      "<thead><tr><th>When</th><th class='num'>Amount</th><th>Merchant</th>" +
+      "<th class='num'>Weight</th></tr></thead><tbody>" +
       r.top_contributors.map((c) =>
-        "<tr" + (injected.has(c.txn_id) ? " class='syn'" : "") + ">" +
-        "<td class='mono'>" + (c.offset === 0 ? "this one" : c.offset) + "</td>" +
-        "<td class='mono'>" + fmtTime(c.timestamp) + "</td>" +
-        "<td class='num'>" + fmtMoney(c.amount) + "</td>" +
+        "<tr" + (inj.has(c.txn_id) ? " class='inj'" : "") + ">" +
+        "<td class='mono'>" + when(c.timestamp) + "</td>" +
+        "<td class='num'>" + money(c.amount) + "</td>" +
         "<td class='mono'>" + c.merchant_id + "</td>" +
-        "<td class='num'>" + (c.attention == null ? "—" : c.attention.toFixed(4)) + "</td></tr>"
+        "<td class='num'>" + (c.attention == null ? "—" : c.attention.toFixed(3)) + "</td></tr>"
       ).join("") + "</tbody>";
-    $("caveat").textContent = r.attention_caveat ||
-      "Contributors here are gradient x input over window positions, not attention: " +
-      "this architecture has none. They answer how much the logit moves with each " +
-      "position's inputs, which is a weaker claim than an explanation.";
+    $("whyNote").textContent = r.attention_caveat ||
+      "These are the earlier payments the decision was most sensitive to. It is a " +
+      "weaker claim than a reason: it says the answer would have moved most if " +
+      "these had been different, not that the model reasoned about them.";
   } else {
-    card.hidden = true;
-    $("caveat").textContent = "";
+    box.hidden = true;
   }
 
-  $("truth").hidden = true;
-  $("truth").innerHTML = episode
-    ? "<p><strong>There is no ground truth for this one.</strong></p>" +
-      "<p class='sub'>You injected a synthetic burst, so you are scoring something " +
-      "that never happened. The original transaction for this customer was " +
-      (activeCase.truth.is_fraud ? "fraud" : "legitimate") + ".</p>"
-    : "<p><strong>" + (activeCase.truth.is_fraud
-        ? "This transaction was fraud" : "This transaction was legitimate") + "</strong>" +
-      (activeCase.truth.fraud_type !== "none"
-        ? " — " + activeCase.truth.fraud_type.replace(/_/g, " ") : "") + ".</p>" +
-      (candidateEdited()
-        ? "<p class='sub'>You edited the form, so that label belongs to the original " +
-          "transaction, not the one you just scored.</p>"
-        : "");
+  const edited = JSON.stringify(txn) !== JSON.stringify(kase.candidate);
+  $("truth").textContent = (episode || edited)
+    ? "You changed the payment, so there is no right answer for it — this one " +
+      "never happened. The payment originally on file for this cardholder was " +
+      (kase.truth.is_fraud ? "fraud." : "legitimate.")
+    : kase.truth.is_fraud
+      ? "Yes — this one was fraud (" + kase.truth.fraud_type.replace(/_/g, " ") + ")."
+      : "No — this one was a genuine payment.";
 }
 
-function candidateEdited() {
-  return JSON.stringify(candidate) !== JSON.stringify(activeCase.candidate);
-}
-
-function renderNotice(notice, data) {
-  const m = data.measured || {};
-  const d = m.deployed, b = m.baseline;
-  let perf = "";
-  if (d && b && d.pr_auc != null && b.pr_auc != null) {
-    const seeds = d.n_seeds || 1;
-    const err = d.pr_auc_std != null ? " ± " + d.pr_auc_std.toFixed(4) : "";
-    perf =
-      "<p>The bundle being served scores <strong>" + d.pr_auc.toFixed(4) + err +
-      "</strong> test PR-AUC against <strong>" + b.pr_auc.toFixed(4) +
-      "</strong> for LightGBM on the same features" +
-      (seeds > 1 ? ", over " + seeds + " seeds." :
-        ". One seed, so there is no error bar — the repository's published " +
-        "figures come from a three-seed run and carry one.") + "</p>";
-    if (d.cost_per_txn != null && b.cost_per_txn != null && m.trivial_policies) {
-      const saved = 100 * (1 - d.cost_per_txn / b.cost_per_txn);
-      perf += "<p>Cost per transaction " + d.cost_per_txn.toFixed(4) + " against " +
-        b.cost_per_txn.toFixed(4) + " for the baseline (" + saved.toFixed(1) +
-        "% lower), where approving everything costs " +
-        m.trivial_policies.block_nothing.toFixed(4) + " and blocking everything costs " +
-        m.trivial_policies.block_everything.toFixed(2) + ". Recall " +
-        (100 * d.recall).toFixed(1) + "% at a " + (100 * d.alert_rate).toFixed(2) +
-        "% alert rate.</p>";
-    }
+function renderPerf() {
+  const m = DATA.measured || {};
+  const dep = m.deployed, base = m.baseline;
+  const bits = [];
+  if (dep && dep.recall != null) {
+    bits.push("On data it had never seen, it caught <strong>" +
+      (100 * dep.recall).toFixed(0) + "%</strong> of the fraud while flagging about <strong>" +
+      (100 * dep.alert_rate).toFixed(1) + "%</strong> of all payments.");
   }
-  if (m.latency) {
-    perf += "<p>Scoring latency p50 " + m.latency.p50_ms.toFixed(2) + " ms, p99 " +
-      m.latency.p99_ms.toFixed(2) + " ms against a 50 ms budget, ONNX Runtime " +
-      m.latency.onnx_speedup_p50.toFixed(1) + "× faster than eager PyTorch at p50.</p>";
+  if (dep && base && dep.cost_per_txn != null) {
+    bits.push("Measured in money rather than accuracy, it was <strong>" +
+      (100 * (1 - dep.cost_per_txn / base.cost_per_txn)).toFixed(0) +
+      "% cheaper</strong> in total losses than a strong conventional model given the same information.");
   }
-
-  $("notice").innerHTML =
-    "<p><strong>What this is.</strong> " + notice.what_this_is + "</p>" +
-    "<p><strong>What it is not.</strong> " + notice.what_this_is_not + "</p>" +
-    perf +
-    (INFO ? "<p class='sub'>Deployed arm <code>" + INFO.model_name + "</code>, " +
-      INFO.calibration + " calibration, " + INFO.n_parameters.toLocaleString() +
-      " parameters over a " + INFO.window_length + "-position window. Block at " +
-      (100 * INFO.decision_threshold).toFixed(2) + "%, review at " +
-      (100 * INFO.review_threshold).toFixed(2) + "%, both chosen on validation " +
-      "against an explicit cost model rather than picked for a round number.</p>" : "") +
-    "<p class='sub'>Fraud is " + (100 * data.dataset.fraud_rate).toFixed(2) +
-    "% of this dataset. The case list oversamples it on purpose, so there is " +
-    "something to find.</p>";
-  if (notice.source) $("src").href = notice.source;
+  if (dep && dep.n_seeds === 1) {
+    bits.push("This particular model was trained once, so those numbers carry no error bar.");
+  }
+  $("perf").innerHTML = bits.join(" ") ||
+    "Performance figures were not shipped with this build.";
 }
 
 async function boot() {
   try {
-    const [notice, data, info] = await Promise.all([
-      fetch("/demo/notice").then((r) => r.json()),
+    const [data, info] = await Promise.all([
       fetch("/demo/data").then((r) => r.ok ? r.json() : Promise.reject(new Error("demo data unavailable"))),
       fetch("/model-info").then((r) => r.ok ? r.json() : null).catch(() => null),
     ]);
+    DATA = data; INFO = info;
 
-    DATA = data;
-    INFO = info;
-    renderNotice(notice, data);
+    /* Ordinary cardholders first. The case list is built fraud-first for the
+       technical demo, and opening on one meant the first thing a visitor saw was
+       "Block, 100%" before they had touched anything -- which reads as a tool
+       that blocks everything rather than one that found real fraud. The labels
+       stay neutral so the answer is not given away. */
+    const ordered = data.cases.slice().sort((a, b) =>
+      Number(a.truth.is_fraud) - Number(b.truth.is_fraud));
+    $("case").innerHTML = ordered.map((c, i) =>
+      "<option value='" + c.id + "'>Cardholder " + (i + 1) + " · spends about " +
+      money(c.customer_median_amount) + " a payment</option>").join("");
+    $("case").addEventListener("change", () => selectCase($("case").value));
+    selectCase(ordered[0].id);
+    renderPerf();
 
-    const sel = $("case");
-    sel.innerHTML = data.cases.map((c) => {
-      const kind = c.id.startsWith("legitimate")
-        ? "Ordinary spending"
-        : c.id.replace(/-\d+$/, "").replace(/_/g, " ");
-      const n = c.id.match(/\d+$/)[0];
-      return "<option value='" + c.id + "'>" + kind + " · case " + n +
-             " · customer " + c.customer_id + "</option>";
-    }).join("");
-    sel.addEventListener("change", () => selectCase(sel.value));
-    selectCase(data.cases[0].id);
+    $("foot").innerHTML =
+      "Synthetic data throughout. " +
+      "<a href='/docs'>API</a> · <a href='/health'>status</a> · " +
+      "<a href='https://github.com/MelvTheGoat/Fraud-Detection-With-Sequence-Models' target='_blank' rel='noopener'>source</a>";
   } catch (e) {
-    $("notice").innerHTML = "<p class='err'>Could not start the demo: " + e.message +
-      "</p><p class='sub'>If the model bundle is missing, <a href='/health'>/health</a> " +
-      "will say <code>degraded</code> and give the reason.</p>";
+    $("error").textContent = "Could not start: " + e.message +
+      " — check /health for the reason.";
+    $("error").hidden = false;
   }
 }
 
-$("score").addEventListener("click", score);
-$("reset").addEventListener("click", () => {
-  candidate = JSON.parse(JSON.stringify(episode ? episode.candidate : activeCase.candidate));
-  buildForm();
-});
+$("go").addEventListener("click", check);
+$("reset").addEventListener("click", () => selectCase(kase.id));
 $("ep-card_testing").addEventListener("click", () => applyEpisode("card_testing"));
 $("ep-account_takeover").addEventListener("click", () => applyEpisode("account_takeover"));
-$("ep-none").addEventListener("click", () => applyEpisode(null));
-$("revealBtn").addEventListener("click", () => {
-  $("truth").hidden = !$("truth").hidden;
-});
 
 boot();
 </script>

@@ -173,7 +173,11 @@ def main() -> int:
 
         page = client.get("/")
         _assert(page.status_code == 200, "the demo page is served")
-        _assert(b"Score this transaction" in page.content, "the page carries its form")
+        _assert(b"Check this payment" in page.content, "the page carries its form")
+        # The country field has to accept values outside the training vocabulary.
+        # A visitor from Lagos typing NG and getting a 422 would be the page
+        # refusing the one thing it invites them to do.
+        _assert(b"\"NG\"" in page.content, "the page offers countries beyond the training set")
 
         metrics = client.get("/metrics").json()
         _assert(
